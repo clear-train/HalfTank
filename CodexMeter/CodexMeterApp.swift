@@ -1,0 +1,164 @@
+import AppKit
+import SwiftUI
+
+enum CodexMeterWindowID {
+    static let history = "usage-history"
+    static let about = "about"
+    static let settings = "app-settings"
+}
+
+@main
+struct CodexMeterApp: App {
+    @StateObject private var settings: AppSettings
+    @StateObject private var history: UsageHistoryModel
+    @StateObject private var usageService: UsageCoordinator
+    @StateObject private var updateChecker: UpdateChecker
+
+    init() {
+        // The rename moved both the bundle identifier and the data directory, so
+        // pull the previous install's database and settings across once.
+        AppIdentityMigration.migrateSupportDirectoryIfNeeded()
+        AppIdentityMigration.migrateDefaultsIfNeeded()
+        // Complete crash recovery before settings derives any account identity.
+        try? HistoryBackup.recoverInterruptedRestore(databaseURL: UsageHistoryStore.defaultDatabaseURL()) { salt in
+            UserDefaults.standard.set(salt, forKey: "history.identitySalt")
+            guard UserDefaults.standard.synchronize() else { throw HistoryBackupError.storageFailure }
+        }
+        // The service and settings UI must share one settings instance so changes
+        // such as notification thresholds take effect immediately.
+        let settings = AppSettings()
+        let history = UsageHistoryModel()
+        let updateChecker = UpdateChecker(
+            includePrereleases: settings.includePrereleaseUpdates
+        )
+        _settings = StateObject(wrappedValue: settings)
+        _history = StateObject(wrappedValue: history)
+        _usageService = StateObject(
+            wrappedValue: UsageCoordinator(settings: settings, history: history)
+        )
+        _updateChecker = StateObject(wrappedValue: updateChecker)
+    }
+
+    var body: some Scene {
+        MenuBarExtra {
+            ContentView(
+                service: usageService,
+                settings: settings,
+                history: history,
+                updateChecker: updateChecker
+            )
+            .appAppearance(settings.appearanceMode)
+        } label: {
+            MenuBarProgressView(
+                remainingPercent: menuBarSnapshot.remainingPercent,
+                remainingTimePercent: menuBarSnapshot.remainingTimePercent,
+                title: menuBarSnapshot.title,
+                style: settings.menuBarStyle,
+                attentionLevel: menuBarSnapshot.attentionLevel,
+                isStale: menuBarSnapshot.isStale,
+                appearance: settings.developerAppearance,
+                flashContext: settings.developerPreviewEnabled ? nil : usageService.historyAccountKey.map {
+                    $0 + ":" + (usageService.menuBarWindow(for: usageService.accountID)?.historyID ?? "")
+                },
+                captionOverride: usageService.menuBarCaption
+            )
+        }
+        .menuBarExtraStyle(.window)
+
+        Window(L10n.string("app.title"), id: CodexMeterWindowID.settings) {
+            AppSettingsView(service: usageService, settings: settings,
+                            history: history, updateChecker: updateChecker)
+                .appAppearance(settings.appearanceMode)
+        }
+        .defaultSize(width: 840, height: 700)
+        .windowResizability(.contentMinSize)
+
+        Window(L10n.string("app.title"), id: CodexMeterWindowID.history) {
+            UsageHistoryView(
+                service: usageService,
+                settings: settings,
+                history: history
+            )
+            .appAppearance(settings.appearanceMode)
+        }
+        .defaultSize(width: 900, height: 820)
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
+
+        Window(L10n.string("app.title"), id: CodexMeterWindowID.about) {
+            AboutView(
+                settings: settings,
+                history: history,
+                updateChecker: updateChecker
+            )
+            .appAppearance(settings.appearanceMode)
+        }
+        .defaultSize(width: 500, height: 620)
+        .windowResizability(.contentSize)
+    }
+
+    private var menuBarSnapshot: MenuBarPreviewSnapshot {
+        if settings.developerPreviewEnabled {
+            return settings.developerPreviewSnapshot
+        }
+
+        let window = usageService.menuBarWindow(for: usageService.accountID)
+        return MenuBarPreviewSnapshot(
+            remainingPercent: window?.remainingPercent,
+            remainingTimePercent: window?.remainingTimePercent(at: Date()),
+            title: window.map { "\($0.remainingPercent)%" }
+                ?? (usageService.isLoading ? "…" : "--"),
+            attentionLevel: window?.attentionLevel(at: Date()) ?? .normal,
+            isStale: usageService.isStale
+        )
+    }
+}
+
+private extension View {
+    /// Synchronizes both SwiftUI content and the AppKit host window. The latter
+    /// is required for MenuBarExtra materials to change appearance immediately.
+    func appAppearance(_ mode: AppAppearanceMode) -> some View {
+        preferredColorScheme(mode.preferredColorScheme)
+            .background(WindowAppearanceSynchronizer(mode: mode))
+    }
+}
+
+private struct WindowAppearanceSynchronizer: NSViewRepresentable {
+    let mode: AppAppearanceMode
+
+    func makeNSView(context: Context) -> AppearanceTrackingView {
+        AppearanceTrackingView(mode: mode)
+    }
+
+    func updateNSView(_ nsView: AppearanceTrackingView, context: Context) {
+        nsView.apply(mode: mode)
+    }
+
+    final class AppearanceTrackingView: NSView {
+        private var mode: AppAppearanceMode
+
+        init(mode: AppAppearanceMode) {
+            self.mode = mode
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            applyWindowAppearance()
+        }
+
+        func apply(mode: AppAppearanceMode) {
+            self.mode = mode
+            applyWindowAppearance()
+        }
+
+        private func applyWindowAppearance() {
+            window?.appearance = mode.windowAppearance
+        }
+    }
+}

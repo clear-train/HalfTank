@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>HalfTank Updates</title>
+        <link>https://github.com/clear-train/HalfTank/releases</link>
+        <description>Signed HalfTank updates</description>
+        <language>en</language>
+        <!--
+            Empty until the first signed release.
+
+            Before publishing, run Sparkle's generate_keys once in a normal Terminal
+            window (it needs Keychain access this sandbox does not grant), paste the
+            printed public key into SUPublicEDKey in Config/CodexMeter-Info.plist, and
+            set SUEnableAutomaticChecks back to true. Then run
+            Scripts/prepare_sparkle_update.sh to append the signed item here.
+        -->
+    </channel>
+</rss>

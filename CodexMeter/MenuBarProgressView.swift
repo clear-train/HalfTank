@@ -1,0 +1,586 @@
+import AppKit
+import SwiftUI
+
+/// Renders a compact status item without nested SwiftUI layout containers.
+/// AppKit drawing keeps the menu bar dimensions stable across macOS releases.
+struct MenuBarProgressView: View {
+    let remainingPercent: Int?
+    let remainingTimePercent: Double?
+    let title: String
+    let style: MenuBarDisplayStyle
+    let attentionLevel: QuotaAttentionLevel
+    let isStale: Bool
+    let appearance: MenuBarAppearance
+    var flashContext: String? = nil
+    /// Replaces the configured caption so the default brand text can follow the
+    /// active quota source without overwriting the user's edited caption.
+    var captionOverride: String? = nil
+
+    @State private var previousFlashSample: FlashSample?
+    @State private var flashIntensity: CGFloat = 0
+    @State private var changedDigitIndices: Set<Int> = []
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var renderedFlashIntensity: CGFloat = 0
+    private var renderedDigitIndices: Set<Int> = []
+
+    init(
+        remainingPercent: Int?,
+        remainingTimePercent: Double?,
+        title: String,
+        style: MenuBarDisplayStyle,
+        attentionLevel: QuotaAttentionLevel,
+        isStale: Bool,
+        appearance: MenuBarAppearance,
+        flashContext: String? = nil,
+        captionOverride: String? = nil
+    ) {
+        self.remainingPercent = remainingPercent
+        self.remainingTimePercent = remainingTimePercent
+        self.title = title
+        self.style = style
+        self.attentionLevel = attentionLevel
+        self.isStale = isStale
+        self.appearance = appearance
+        self.flashContext = flashContext
+        self.captionOverride = captionOverride
+    }
+
+    private struct FlashSample: Equatable {
+        let context: String?
+        let remaining: Int?
+        let stale: Bool
+        let style: MenuBarDisplayStyle
+    }
+
+    private var flashSample: FlashSample {
+        FlashSample(context: flashContext, remaining: remainingPercent, stale: isStale, style: style)
+    }
+
+    var body: some View {
+        Image(nsImage: statusImage)
+            .renderingMode(.original)
+            .accessibilityLabel(accessibilityText)
+            .task(id: flashSample) {
+                let current = flashSample
+                let previous = previousFlashSample
+                previousFlashSample = current
+                flashIntensity = 0
+                changedDigitIndices = []
+                guard current.context != nil,
+                      previous?.context == current.context,
+                      previous?.style == current.style,
+                      current.style != .progressOnly,
+                      !current.stale, previous?.stale == false,
+                      let oldValue = previous?.remaining,
+                      let newValue = current.remaining,
+                      newValue < oldValue else { return }
+
+                // Compare place values from the right, including 100 -> 99 and 10 -> 9.
+                let oldDigits = Array(String(oldValue).reversed())
+                let newDigits = Array(String(newValue))
+                changedDigitIndices = Set(newDigits.indices.filter { index in
+                    let place = newDigits.count - 1 - index
+                    return place >= oldDigits.count || newDigits[index] != oldDigits[place]
+                })
+                flashIntensity = 1
+                // NSImage pixels do not interpolate through SwiftUI animations.
+                // Render a bounded fade only while a decrease is being highlighted.
+                do {
+                    try await Task.sleep(nanoseconds: 500_000_000)
+                    for frame in 1...(reduceMotion ? 1 : 60) {
+                        try await Task.sleep(nanoseconds: reduceMotion ? 2_000_000_000 : 33_333_333)
+                        try Task.checkCancellation()
+                        let progress = reduceMotion ? 1 : Double(frame) / 60
+                        flashIntensity = CGFloat(1 - progress * progress * (3 - 2 * progress))
+                    }
+                } catch { }
+            }
+            .onDisappear {
+                flashIntensity = 0
+                previousFlashSample = nil
+            }
+    }
+
+    private var normalizedAppearance: MenuBarAppearance {
+        appearance.normalized()
+    }
+
+    private var staleWidth: CGFloat {
+        guard isStale, normalizedAppearance.showsStaleIndicator else { return 0 }
+        return CGFloat(normalizedAppearance.staleIndicatorSize + 3)
+    }
+
+    private var imageSize: NSSize {
+        let appearance = normalizedAppearance
+        let padding = CGFloat(appearance.horizontalPadding * 2)
+        let spacing = CGFloat(appearance.indicatorTextSpacing)
+        let ring = CGFloat(appearance.ringDiameter)
+        let text = CGFloat(appearance.textWidth)
+        let bar = CGFloat(appearance.barWidth)
+        let contentWidth: CGFloat
+
+        switch style {
+        case .progressAndPercentage:
+            contentWidth = ring + spacing + text
+        case .horizontalBarBesidePercentage, .dualBars:
+            contentWidth = bar + spacing + text
+        case .compactBarBelowPercentage, .percentageOnly:
+            contentWidth = text
+        case .progressOnly:
+            contentWidth = ring
+        }
+
+        return NSSize(
+            width: ceil(contentWidth + padding + staleWidth),
+            height: CGFloat(appearance.itemHeight)
+        )
+    }
+
+    private var statusImage: NSImage {
+        // Read State during body evaluation, before AppKit's deferred drawing.
+        // Each image captures immutable frame values and invalidates independently
+        // of the next server refresh.
+        var renderer = self
+        renderer.renderedFlashIntensity = flashIntensity
+        renderer.renderedDigitIndices = changedDigitIndices
+        let appearance = normalizedAppearance
+        let size = imageSize
+        let image = NSImage(size: size, flipped: false) { rect in
+            let leadingStaleWidth = isStale
+                && appearance.showsStaleIndicator
+                && appearance.staleIndicatorPlacement == .leading ? staleWidth : 0
+            var cursorX = CGFloat(appearance.horizontalPadding) + leadingStaleWidth
+            let centerY = rect.midY
+
+            switch style {
+            case .progressAndPercentage:
+                let diameter = CGFloat(appearance.ringDiameter)
+                drawProgressRings(
+                    in: NSRect(
+                        x: cursorX,
+                        y: centerY - diameter / 2,
+                        width: diameter,
+                        height: diameter
+                    ),
+                    appearance: appearance
+                )
+                cursorX += diameter + CGFloat(appearance.indicatorTextSpacing)
+                renderer.drawPercentageAndCaption(
+                    in: NSRect(
+                        x: cursorX,
+                        y: 0,
+                        width: CGFloat(appearance.textWidth),
+                        height: rect.height
+                    ),
+                    appearance: appearance
+                )
+
+            case .horizontalBarBesidePercentage:
+                let barHeight = CGFloat(appearance.barHeight)
+                drawProgressBar(
+                    value: remainingPercent.map(Double.init),
+                    color: attentionColor(appearance: appearance),
+                    in: NSRect(
+                        x: cursorX,
+                        y: centerY - barHeight / 2,
+                        width: CGFloat(appearance.barWidth),
+                        height: barHeight
+                    ),
+                    trackOpacity: appearance.trackOpacity
+                )
+                cursorX += CGFloat(appearance.barWidth + appearance.indicatorTextSpacing)
+                renderer.drawSingleLineTitle(
+                    in: NSRect(
+                        x: cursorX,
+                        y: 0,
+                        width: CGFloat(appearance.textWidth),
+                        height: rect.height
+                    ),
+                    appearance: appearance
+                )
+
+            case .compactBarBelowPercentage:
+                let textRect = NSRect(
+                    x: cursorX,
+                    y: CGFloat(appearance.barHeight + 2),
+                    width: CGFloat(appearance.textWidth),
+                    height: rect.height - CGFloat(appearance.barHeight + 2)
+                )
+                renderer.drawSingleLineTitle(in: textRect, appearance: appearance)
+                drawProgressBar(
+                    value: remainingPercent.map(Double.init),
+                    color: attentionColor(appearance: appearance),
+                    in: NSRect(
+                        x: cursorX,
+                        y: 1,
+                        width: CGFloat(appearance.textWidth),
+                        height: CGFloat(appearance.barHeight)
+                    ),
+                    trackOpacity: appearance.trackOpacity
+                )
+
+            case .dualBars:
+                let barHeight = CGFloat(appearance.barHeight)
+                let gap: CGFloat = 3
+                let totalHeight = barHeight * 2 + gap
+                let barX = cursorX
+                let barWidth = CGFloat(appearance.barWidth)
+                drawProgressBar(
+                    value: remainingPercent.map(Double.init),
+                    color: attentionColor(appearance: appearance),
+                    in: NSRect(
+                        x: barX,
+                        y: centerY + gap / 2,
+                        width: barWidth,
+                        height: barHeight
+                    ),
+                    trackOpacity: appearance.trackOpacity
+                )
+                drawProgressBar(
+                    value: remainingTimePercent,
+                    color: appearance.timeColor.nsColor,
+                    in: NSRect(
+                        x: barX,
+                        y: centerY - totalHeight / 2,
+                        width: barWidth,
+                        height: barHeight
+                    ),
+                    trackOpacity: appearance.trackOpacity
+                )
+                cursorX += barWidth + CGFloat(appearance.indicatorTextSpacing)
+                renderer.drawSingleLineTitle(
+                    in: NSRect(
+                        x: cursorX,
+                        y: 0,
+                        width: CGFloat(appearance.textWidth),
+                        height: rect.height
+                    ),
+                    appearance: appearance
+                )
+
+            case .percentageOnly:
+                renderer.drawPercentageAndCaption(
+                    in: NSRect(
+                        x: cursorX,
+                        y: 0,
+                        width: CGFloat(appearance.textWidth),
+                        height: rect.height
+                    ),
+                    appearance: appearance
+                )
+
+            case .progressOnly:
+                let diameter = CGFloat(appearance.ringDiameter)
+                drawProgressRings(
+                    in: NSRect(
+                        x: cursorX,
+                        y: centerY - diameter / 2,
+                        width: diameter,
+                        height: diameter
+                    ),
+                    appearance: appearance
+                )
+            }
+
+            if isStale, appearance.showsStaleIndicator {
+                drawStaleIndicator(in: rect, appearance: appearance)
+            }
+            return true
+        }
+        // Preserve quota and warning colors instead of applying template tinting.
+        image.isTemplate = false
+        return image
+    }
+
+    private func drawProgressRings(in rect: NSRect, appearance: MenuBarAppearance) {
+        let center = NSPoint(x: rect.midX, y: rect.midY)
+        let outerWidth = CGFloat(appearance.outerRingStrokeWidth)
+        let innerWidth = CGFloat(appearance.innerRingStrokeWidth)
+        let outerRadius = max(1, min(rect.width, rect.height) / 2 - outerWidth / 2)
+        let innerRadius = max(
+            innerWidth / 2 + 0.5,
+            outerRadius - outerWidth / 2 - CGFloat(appearance.ringGap) - innerWidth / 2
+        )
+
+        drawRing(
+            center: center,
+            radius: outerRadius,
+            lineWidth: outerWidth,
+            value: nil,
+            color: NSColor.labelColor.withAlphaComponent(CGFloat(appearance.trackOpacity)),
+            startAngle: appearance.ringStartAngle
+        )
+
+        guard let remainingPercent else {
+            drawUnknown(in: rect)
+            return
+        }
+
+        drawRing(
+            center: center,
+            radius: outerRadius,
+            lineWidth: outerWidth,
+            value: Double(remainingPercent),
+            color: attentionColor(appearance: appearance),
+            startAngle: appearance.ringStartAngle
+        )
+
+        // Omit the inner ring when reset timing is unavailable.
+        guard let remainingTimePercent else { return }
+        drawRing(
+            center: center,
+            radius: innerRadius,
+            lineWidth: innerWidth,
+            value: nil,
+            color: appearance.timeColor.nsColor.withAlphaComponent(
+                CGFloat(appearance.trackOpacity)
+            ),
+            startAngle: appearance.ringStartAngle
+        )
+        drawRing(
+            center: center,
+            radius: innerRadius,
+            lineWidth: innerWidth,
+            value: remainingTimePercent,
+            color: appearance.timeColor.nsColor,
+            startAngle: appearance.ringStartAngle
+        )
+    }
+
+    private func drawRing(
+        center: NSPoint,
+        radius: CGFloat,
+        lineWidth: CGFloat,
+        value: Double?,
+        color: NSColor,
+        startAngle: Double
+    ) {
+        let path = NSBezierPath()
+        if let value {
+            let fraction = CGFloat(min(100, max(0, value))) / 100
+            guard fraction > 0 else { return }
+            path.appendArc(
+                withCenter: center,
+                radius: radius,
+                startAngle: CGFloat(startAngle),
+                endAngle: CGFloat(startAngle) - 360 * fraction,
+                clockwise: true
+            )
+            path.lineCapStyle = .round
+        } else {
+            path.appendOval(in: NSRect(
+                x: center.x - radius,
+                y: center.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            ))
+        }
+        path.lineWidth = lineWidth
+        color.setStroke()
+        path.stroke()
+    }
+
+    private func drawProgressBar(
+        value: Double?,
+        color: NSColor,
+        in rect: NSRect,
+        trackOpacity: Double
+    ) {
+        let radius = rect.height / 2
+        let track = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+        NSColor.labelColor.withAlphaComponent(CGFloat(trackOpacity)).setFill()
+        track.fill()
+
+        guard let value else {
+            drawUnknown(in: NSRect(x: rect.midX - 5, y: rect.midY - 6, width: 10, height: 12))
+            return
+        }
+        let fraction = CGFloat(min(100, max(0, value))) / 100
+        guard fraction > 0 else { return }
+
+        let progressRect = NSRect(
+            x: rect.minX,
+            y: rect.minY,
+            width: max(rect.height, rect.width * fraction),
+            height: rect.height
+        )
+        let progress = NSBezierPath(roundedRect: progressRect, xRadius: radius, yRadius: radius)
+        color.setFill()
+        progress.fill()
+    }
+
+    private func drawPercentageAndCaption(in rect: NSRect, appearance: MenuBarAppearance) {
+        let caption = captionOverride ?? appearance.captionText
+        let shouldDrawCaption = appearance.showsCaption && !caption.isEmpty
+        if shouldDrawCaption {
+            drawText(
+                title,
+                in: NSRect(
+                    x: rect.minX,
+                    y: rect.height - 12 + CGFloat(appearance.percentageVerticalOffset),
+                    width: rect.width,
+                    height: 12
+                ),
+                font: .monospacedDigitSystemFont(
+                    ofSize: appearance.percentageFontSize,
+                    weight: appearance.percentageFontWeight.nsWeight
+                ),
+                color: .labelColor,
+                highlightsChangedDigits: true
+            )
+            drawText(
+                caption,
+                in: NSRect(
+                    x: rect.minX,
+                    y: CGFloat(appearance.captionVerticalOffset),
+                    width: rect.width,
+                    height: 9
+                ),
+                font: .systemFont(
+                    ofSize: appearance.captionFontSize,
+                    weight: appearance.captionFontWeight.nsWeight
+                ),
+                color: appearance.captionColor.nsColor
+            )
+        } else {
+            drawSingleLineTitle(in: rect, appearance: appearance)
+        }
+    }
+
+    private func drawSingleLineTitle(in rect: NSRect, appearance: MenuBarAppearance) {
+        let height = CGFloat(appearance.percentageFontSize + 3)
+        drawText(
+            title,
+            in: NSRect(
+                x: rect.minX,
+                y: rect.midY - height / 2 + CGFloat(appearance.percentageVerticalOffset),
+                width: rect.width,
+                height: height
+            ),
+            font: .monospacedDigitSystemFont(
+                ofSize: appearance.percentageFontSize,
+                weight: appearance.percentageFontWeight.nsWeight
+            ),
+            color: .labelColor,
+            highlightsChangedDigits: true
+        )
+    }
+
+    private func drawText(
+        _ value: String, in rect: NSRect, font: NSFont, color: NSColor,
+        highlightsChangedDigits: Bool = false
+    ) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byClipping
+        let text = NSMutableAttributedString(
+            string: value,
+            attributes: [
+                .font: font,
+                .foregroundColor: color,
+                .paragraphStyle: paragraph
+            ]
+        )
+        if highlightsChangedDigits, renderedFlashIntensity > 0 {
+            let highlight = color.blended(withFraction: renderedFlashIntensity, of: .systemRed) ?? .systemRed
+            for index in renderedDigitIndices where index < text.length {
+                let character = (value as NSString).substring(with: NSRange(location: index, length: 1))
+                guard character.rangeOfCharacter(from: .decimalDigits) != nil else { continue }
+                text.addAttribute(.foregroundColor, value: highlight, range: NSRange(location: index, length: 1))
+            }
+        }
+        text.draw(in: rect)
+    }
+
+    private func drawUnknown(in rect: NSRect) {
+        drawText(
+            "?",
+            in: rect,
+            font: .systemFont(ofSize: 8, weight: .semibold),
+            color: .secondaryLabelColor
+        )
+    }
+
+    private func drawStaleIndicator(in rect: NSRect, appearance: MenuBarAppearance) {
+        let size = CGFloat(appearance.staleIndicatorSize)
+        let x: CGFloat
+        switch appearance.staleIndicatorPlacement {
+        case .leading:
+            x = CGFloat(appearance.horizontalPadding)
+        case .trailing:
+            x = rect.maxX - staleWidth + 1
+        }
+        drawText(
+            "!",
+            in: NSRect(x: x, y: rect.midY - size / 2, width: size, height: size + 2),
+            font: .systemFont(ofSize: size, weight: .bold),
+            color: appearance.staleColor.nsColor
+        )
+    }
+
+    private func attentionColor(appearance: MenuBarAppearance) -> NSColor {
+        switch attentionLevel {
+        case .normal: appearance.normalColor.nsColor
+        case .warning: appearance.warningColor.nsColor
+        case .critical: appearance.criticalColor.nsColor
+        }
+    }
+
+    private var accessibilityText: String {
+        guard let remainingPercent else { return L10n.string("menubar.unavailable") }
+        let quota = L10n.format("menubar.remaining_format", remainingPercent)
+        var components = [quota]
+        if let remainingTimePercent {
+            components.append(L10n.format("menubar.time_remaining_format", remainingTimePercent))
+        }
+        if isStale {
+            components.append(L10n.string("data.stale"))
+        }
+        return components.joined(separator: ", ")
+    }
+}
+
+private extension MenuBarFontWeightChoice {
+    var nsWeight: NSFont.Weight {
+        switch self {
+        case .regular: .regular
+        case .medium: .medium
+        case .semibold: .semibold
+        case .bold: .bold
+        }
+    }
+}
+
+extension MenuBarColorChoice {
+    var nsColor: NSColor {
+        switch self {
+        case .system: .labelColor
+        case .blue: .systemBlue
+        case .brightBlue: NSColor(srgbRed: 0.30, green: 0.72, blue: 1.0, alpha: 1.0)
+        case .teal: .systemTeal
+        case .green: .systemGreen
+        case .yellow: .systemYellow
+        case .orange: .systemOrange
+        case .red: .systemRed
+        case .pink: .systemPink
+        case .purple: .systemPurple
+        case .white: .white
+        }
+    }
+
+    /// Native progress controls can discard a dynamic AppKit tint when the
+    /// system appearance changes. Resolve it first so SwiftUI receives a new,
+    /// concrete color for the active color scheme.
+    func swiftUIColor(for colorScheme: ColorScheme) -> Color {
+        let appearanceName: NSAppearance.Name = colorScheme == .dark ? .darkAqua : .aqua
+        guard let appearance = NSAppearance(named: appearanceName) else {
+            return Color(nsColor: nsColor)
+        }
+
+        var resolvedColor = nsColor
+        appearance.performAsCurrentDrawingAppearance {
+            resolvedColor = nsColor.usingColorSpace(.sRGB) ?? nsColor
+        }
+        return Color(nsColor: resolvedColor)
+    }
+}

@@ -1,0 +1,729 @@
+import AppKit
+import Combine
+import Foundation
+import ServiceManagement
+import SwiftUI
+
+enum AppAppearanceMode: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    /// A nil preference lets each app window track the current system appearance.
+    var preferredColorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    /// MenuBarExtra's AppKit window does not always honor SwiftUI's color-scheme preference.
+    var windowAppearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+
+    var localizedName: String {
+        L10n.string("settings.appearance.\(rawValue)")
+    }
+}
+
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case system
+    case english
+    case simplifiedChinese
+    case traditionalChinese
+
+    var id: String { rawValue }
+
+    /// A nil code keeps Foundation and the String Catalog on the system language.
+    var languageCode: String? {
+        switch self {
+        case .system: nil
+        case .english: "en"
+        case .simplifiedChinese: "zh-Hans"
+        case .traditionalChinese: "zh-Hant"
+        }
+    }
+
+    var localizedName: String {
+        switch self {
+        case .system: L10n.string("settings.language.system")
+        case .english: L10n.string("settings.language.english")
+        case .simplifiedChinese: L10n.string("settings.language.simplified_chinese")
+        case .traditionalChinese: L10n.string("settings.language.traditional_chinese")
+        }
+    }
+}
+
+enum SettingsDestination: Equatable {
+    /// Identifies the System Settings pane that can resolve the latest error.
+    case notifications
+    case loginItems
+}
+
+extension MenuBarDisplayStyle {
+    var localizedName: String {
+        switch self {
+        case .progressAndPercentage:
+            return L10n.string("settings.style.progress_percentage")
+        case .horizontalBarBesidePercentage:
+            return L10n.string("settings.style.bar_beside")
+        case .compactBarBelowPercentage:
+            return L10n.string("settings.style.bar_below")
+        case .dualBars:
+            return L10n.string("settings.style.dual_bars")
+        case .percentageOnly:
+            return L10n.string("settings.style.percentage")
+        case .progressOnly:
+            return L10n.string("settings.style.progress")
+        }
+    }
+}
+
+extension MenuBarFontWeightChoice {
+    var localizedName: String {
+        L10n.string("developer.font_weight.\(rawValue)")
+    }
+}
+
+extension MenuBarColorChoice {
+    var localizedName: String {
+        L10n.string("developer.color_choice.\(rawValue)")
+    }
+}
+
+extension StaleIndicatorPlacement {
+    var localizedName: String {
+        L10n.string("developer.stale_placement.\(rawValue)")
+    }
+}
+
+extension DeveloperPreviewPreset {
+    var localizedName: String {
+        L10n.string("developer.preset.\(rawValue)")
+    }
+}
+
+extension HistoryRetention {
+    var localizedName: String {
+        L10n.string("history.retention.\(rawValue)")
+    }
+}
+
+extension TokenActivityRange {
+    var localizedName: String {
+        L10n.string("history.range.\(rawValue)")
+    }
+}
+
+extension QuotaHistoryRange {
+    var localizedName: String {
+        L10n.string("history.quota.range.\(rawValue)")
+    }
+}
+
+extension QuotaHistoryMode {
+    var localizedName: String {
+        historyRange?.localizedName ?? L10n.string("history.quota.mode.browse")
+    }
+}
+
+extension QuotaCalendarPeriod {
+    var localizedName: String {
+        L10n.string("history.quota.calendar.\(rawValue)")
+    }
+}
+
+extension UsageProvider {
+    /// Provider names are product brands and stay untranslated.
+    var localizedName: String {
+        switch self {
+        case .codex: "Codex"
+        case .openCodeGo: "OpenCode Go"
+        }
+    }
+}
+
+extension OpenCodeGoChannel {
+    var localizedName: String {
+        switch self {
+        case .cli: L10n.string("settings.provider.opencode_channel.cli")
+        case .direct: L10n.string("settings.provider.opencode_channel.direct")
+        }
+    }
+}
+
+extension ResetStrategy {
+    var localizedName: String {
+        switch self {
+        case .bridge: L10n.string("settings.reset_strategy.bridge")
+        case .maximize: L10n.string("settings.reset_strategy.maximize")
+        }
+    }
+}
+
+extension PopoverContentSection {
+    var localizedName: String {
+        L10n.string("settings.popover.section.\(rawValue)")
+    }
+}
+
+/// Persists user preferences and bridges settings that are owned by macOS.
+final class AppSettings: ObservableObject {
+    @Published var appearanceMode: AppAppearanceMode {
+        didSet { defaults.set(appearanceMode.rawValue, forKey: Keys.appearanceMode) }
+    }
+
+    @Published var language: AppLanguage {
+        didSet {
+            defaults.set(language.rawValue, forKey: Keys.language)
+            L10n.setLanguage(language.languageCode)
+            updatePushCredentialError()
+        }
+    }
+
+    @Published var menuBarStyle: MenuBarDisplayStyle {
+        didSet { defaults.set(menuBarStyle.rawValue, forKey: Keys.menuBarStyle) }
+    }
+
+    @Published var popoverContent: PopoverContentConfiguration {
+        didSet {
+            let normalized = popoverContent.normalized()
+            if normalized != popoverContent {
+                popoverContent = normalized
+                return
+            }
+            if let data = try? JSONEncoder().encode(normalized) {
+                defaults.set(data, forKey: Keys.popoverContent)
+            }
+        }
+    }
+
+    /// Quota accounts the app watches, in popover order. The first entry is the
+    /// default Codex login; extra Codex entries point at their own `CODEX_HOME`.
+    @Published var accounts: [StoredQuotaAccount] {
+        didSet {
+            let normalized = Self.normalizedAccounts(accounts)
+            if normalized != accounts {
+                accounts = normalized
+                return
+            }
+            if let data = try? JSONEncoder().encode(normalized) {
+                defaults.set(data, forKey: Keys.usageAccounts)
+            }
+        }
+    }
+
+    /// Account the popover shows first after launch.
+    @Published var usageAccountID: String {
+        didSet { defaults.set(usageAccountID, forKey: Keys.usageAccountID) }
+    }
+
+    /// Preferred OpenCode Go transport. The other transport is always used as a
+    /// fallback, so this only controls which path is attempted first.
+    @Published var openCodeGoChannel: OpenCodeGoChannel {
+        didSet { defaults.set(openCodeGoChannel.rawValue, forKey: Keys.openCodeGoChannel) }
+    }
+
+    /// Opt-in: fetch the community reset estimate from pingreset.com.
+    /// Off by default because it is the only feature that contacts a third party.
+    @Published var resetStrategy: ResetStrategy {
+        didSet { defaults.set(resetStrategy.rawValue, forKey: Keys.resetStrategy) }
+    }
+
+    @Published var resetForecastEnabled: Bool {
+        didSet { defaults.set(resetForecastEnabled, forKey: Keys.resetForecastEnabled) }
+    }
+
+    @Published var notificationsEnabled: Bool {
+        didSet { defaults.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
+    }
+
+    @Published var notificationThreshold: Int {
+        didSet { defaults.set(notificationThreshold, forKey: Keys.notificationThreshold) }
+    }
+
+    @Published var barkEnabled: Bool {
+        didSet { defaults.set(barkEnabled, forKey: Keys.barkEnabled) }
+    }
+
+    @Published var barkServerURL: String {
+        didSet { defaults.set(barkServerURL, forKey: Keys.barkServerURL) }
+    }
+
+    @Published var barkDeviceKey: String {
+        didSet { persistPushCredential(barkDeviceKey, for: .barkDeviceKey) }
+    }
+
+    @Published var barkIconURL: String {
+        didSet { defaults.set(barkIconURL, forKey: Keys.barkIconURL) }
+    }
+
+    @Published var gotifyEnabled: Bool {
+        didSet { defaults.set(gotifyEnabled, forKey: Keys.gotifyEnabled) }
+    }
+
+    @Published var gotifyServerURL: String {
+        didSet { defaults.set(gotifyServerURL, forKey: Keys.gotifyServerURL) }
+    }
+
+    @Published var gotifyAppToken: String {
+        didSet { persistPushCredential(gotifyAppToken, for: .gotifyAppToken) }
+    }
+
+    @Published var gotifyPriority: Int {
+        didSet { defaults.set(gotifyPriority, forKey: Keys.gotifyPriority) }
+    }
+
+    @Published var telegramEnabled: Bool {
+        didSet { defaults.set(telegramEnabled, forKey: Keys.telegramEnabled) }
+    }
+
+    @Published var telegramBotToken: String {
+        didSet { persistPushCredential(telegramBotToken, for: .telegramBotToken) }
+    }
+
+    @Published var telegramChatID: String {
+        didSet { defaults.set(telegramChatID, forKey: Keys.telegramChatID) }
+    }
+
+    @Published var discordEnabled: Bool {
+        didSet { defaults.set(discordEnabled, forKey: Keys.discordEnabled) }
+    }
+
+    @Published var discordWebhookURL: String {
+        didSet { persistPushCredential(discordWebhookURL, for: .discordWebhookURL) }
+    }
+
+    @Published private(set) var pushCredentialError: String?
+
+    @Published var pushFiveHourResetEnabled: Bool {
+        didSet { defaults.set(pushFiveHourResetEnabled, forKey: Keys.pushFiveHourResetEnabled) }
+    }
+
+    @Published var pushWeeklyResetEnabled: Bool {
+        didSet { defaults.set(pushWeeklyResetEnabled, forKey: Keys.pushWeeklyResetEnabled) }
+    }
+
+    @Published var historyRetention: HistoryRetention {
+        didSet { defaults.set(historyRetention.rawValue, forKey: Keys.historyRetention) }
+    }
+
+    @Published var includePrereleaseUpdates: Bool {
+        didSet { defaults.set(includePrereleaseUpdates, forKey: Keys.includePrereleaseUpdates) }
+    }
+
+    @Published var developerAppearance: MenuBarAppearance {
+        didSet {
+            let normalized = developerAppearance.normalized()
+            if normalized != developerAppearance {
+                developerAppearance = normalized
+                return
+            }
+            if let data = try? JSONEncoder().encode(normalized) {
+                defaults.set(data, forKey: Keys.developerAppearance)
+            }
+        }
+    }
+
+    @Published var developerPreviewEnabled: Bool {
+        didSet { defaults.set(developerPreviewEnabled, forKey: Keys.developerPreviewEnabled) }
+    }
+
+    @Published var developerPreviewPreset: DeveloperPreviewPreset {
+        didSet { defaults.set(developerPreviewPreset.rawValue, forKey: Keys.developerPreviewPreset) }
+    }
+
+    @Published private(set) var developerPreviewRemainingPercent: Double {
+        didSet {
+            defaults.set(
+                developerPreviewRemainingPercent,
+                forKey: Keys.developerPreviewRemainingPercent
+            )
+        }
+    }
+
+    @Published private(set) var developerPreviewRemainingTimePercent: Double {
+        didSet {
+            defaults.set(
+                developerPreviewRemainingTimePercent,
+                forKey: Keys.developerPreviewRemainingTimePercent
+            )
+        }
+    }
+
+    @Published private(set) var launchAtLoginEnabled = false
+    @Published var settingsError: String?
+    @Published var settingsDestination: SettingsDestination?
+
+    let historyIdentitySalt: String
+
+    private let defaults: UserDefaults
+    private let pushCredentials: PushCredentialStore
+    private var failedPushCredentials = Set<PushCredential>()
+
+    private enum Keys {
+        static let appearanceMode = "appearanceMode"
+        static let language = "language"
+        static let menuBarStyle = "menuBarStyle"
+        static let popoverContent = "popover.contentConfiguration"
+        static let usageAccounts = "usage.accounts"
+        static let usageAccountID = "usage.accountID"
+        /// Pre-account release stored a single provider here.
+        static let legacyUsageProvider = "usage.provider"
+        static let openCodeGoChannel = "usage.openCodeGo.channel"
+        static let resetForecastEnabled = "network.resetForecast.enabled"
+        static let resetStrategy = "usage.resetStrategy"
+        static let notificationsEnabled = "notificationsEnabled"
+        static let notificationThreshold = "notificationThreshold"
+        static let barkEnabled = "push.barkEnabled"
+        static let barkServerURL = "push.barkServerURL"
+        static let barkIconURL = "push.barkIconURL"
+        static let gotifyEnabled = "push.gotifyEnabled"
+        static let gotifyServerURL = "push.gotifyServerURL"
+        static let gotifyPriority = "push.gotifyPriority"
+        static let telegramEnabled = "push.telegramEnabled"
+        static let telegramChatID = "push.telegramChatID"
+        static let discordEnabled = "push.discordEnabled"
+        static let pushFiveHourResetEnabled = "push.fiveHourResetEnabled"
+        static let pushWeeklyResetEnabled = "push.weeklyResetEnabled"
+        static let historyRetention = "history.retention"
+        static let includePrereleaseUpdates = "updates.includePrereleases"
+        static let developerAppearance = "developer.appearance"
+        static let developerAppearanceDefaultsVersion = "developer.appearanceDefaultsVersion"
+        static let developerPreviewEnabled = "developer.previewEnabled"
+        static let developerPreviewPreset = "developer.previewPreset"
+        static let developerPreviewRemainingPercent = "developer.previewRemainingPercent"
+        static let developerPreviewRemainingTimePercent = "developer.previewRemainingTimePercent"
+        static let historyIdentitySalt = "history.identitySalt"
+    }
+
+    init(
+        defaults: UserDefaults = .standard,
+        credentialBackend: any PushCredentialBackend = KeychainPushCredentialBackend()
+    ) {
+        self.defaults = defaults
+        let credentialStore = PushCredentialStore(defaults: defaults, backend: credentialBackend)
+        self.pushCredentials = credentialStore
+        let loadedCredentials = Dictionary(uniqueKeysWithValues: PushCredential.allCases.map {
+            ($0, credentialStore.load($0))
+        })
+        if let storedSalt = defaults.string(forKey: Keys.historyIdentitySalt),
+           !storedSalt.isEmpty {
+            historyIdentitySalt = storedSalt
+        } else {
+            let newSalt = UUID().uuidString
+            defaults.set(newSalt, forKey: Keys.historyIdentitySalt)
+            historyIdentitySalt = newSalt
+        }
+        appearanceMode = AppAppearanceMode(
+            rawValue: defaults.string(forKey: Keys.appearanceMode) ?? ""
+        ) ?? .system
+        language = AppLanguage(
+            rawValue: defaults.string(forKey: Keys.language) ?? ""
+        ) ?? .system
+        menuBarStyle = MenuBarDisplayStyle(
+            rawValue: defaults.string(forKey: Keys.menuBarStyle) ?? ""
+        ) ?? .progressAndPercentage
+        if let data = defaults.data(forKey: Keys.popoverContent),
+           let decoded = try? JSONDecoder().decode(
+               PopoverContentConfiguration.self,
+               from: data
+           ) {
+            popoverContent = decoded.normalized()
+        } else {
+            popoverContent = .defaultValue
+        }
+        let storedAccounts: [StoredQuotaAccount]
+        if let data = defaults.data(forKey: Keys.usageAccounts),
+           let decoded = try? JSONDecoder().decode([StoredQuotaAccount].self, from: data) {
+            storedAccounts = Self.normalizedAccounts(decoded)
+        } else {
+            storedAccounts = StoredQuotaAccount.seededAccounts()
+        }
+        accounts = storedAccounts
+        let legacyProvider = defaults.string(forKey: Keys.legacyUsageProvider)
+        if let storedAccountID = defaults.string(forKey: Keys.usageAccountID),
+           storedAccounts.contains(where: { $0.id == storedAccountID }) {
+            usageAccountID = storedAccountID
+        } else if legacyProvider == UsageProvider.openCodeGo.rawValue {
+            usageAccountID = StoredQuotaAccount.openCodeGoID
+        } else {
+            usageAccountID = StoredQuotaAccount.defaultCodexID
+        }
+        openCodeGoChannel = OpenCodeGoChannel(
+            rawValue: defaults.string(forKey: Keys.openCodeGoChannel) ?? ""
+        ) ?? .cli
+        resetForecastEnabled = defaults.bool(forKey: Keys.resetForecastEnabled)
+        resetStrategy = defaults.string(forKey: Keys.resetStrategy)
+            .flatMap(ResetStrategy.init(rawValue:)) ?? .bridge
+        notificationsEnabled = defaults.bool(forKey: Keys.notificationsEnabled)
+        let storedThreshold = defaults.integer(forKey: Keys.notificationThreshold)
+        notificationThreshold = storedThreshold == 0 ? 20 : storedThreshold
+        if defaults.object(forKey: Keys.pushFiveHourResetEnabled) != nil {
+            pushFiveHourResetEnabled = defaults.bool(forKey: Keys.pushFiveHourResetEnabled)
+        } else {
+            pushFiveHourResetEnabled = true
+        }
+        if defaults.object(forKey: Keys.pushWeeklyResetEnabled) != nil {
+            pushWeeklyResetEnabled = defaults.bool(forKey: Keys.pushWeeklyResetEnabled)
+        } else {
+            pushWeeklyResetEnabled = true
+        }
+        barkEnabled = defaults.bool(forKey: Keys.barkEnabled)
+        barkServerURL = defaults.string(forKey: Keys.barkServerURL) ?? "https://api.day.app"
+        barkDeviceKey = loadedCredentials[.barkDeviceKey]?.value ?? ""
+        barkIconURL = defaults.string(forKey: Keys.barkIconURL) ?? ""
+        gotifyEnabled = defaults.bool(forKey: Keys.gotifyEnabled)
+        gotifyServerURL = defaults.string(forKey: Keys.gotifyServerURL) ?? ""
+        gotifyAppToken = loadedCredentials[.gotifyAppToken]?.value ?? ""
+        let storedGotifyPriority = defaults.integer(forKey: Keys.gotifyPriority)
+        gotifyPriority = storedGotifyPriority == 0 ? 5 : storedGotifyPriority
+        telegramEnabled = defaults.bool(forKey: Keys.telegramEnabled)
+        telegramBotToken = loadedCredentials[.telegramBotToken]?.value ?? ""
+        telegramChatID = defaults.string(forKey: Keys.telegramChatID) ?? ""
+        discordEnabled = defaults.bool(forKey: Keys.discordEnabled)
+        discordWebhookURL = loadedCredentials[.discordWebhookURL]?.value ?? ""
+        historyRetention = HistoryRetention(
+            rawValue: defaults.string(forKey: Keys.historyRetention) ?? ""
+        ) ?? .forever
+        includePrereleaseUpdates = defaults.bool(forKey: Keys.includePrereleaseUpdates)
+        let appearanceDefaultsVersion = defaults.integer(
+            forKey: Keys.developerAppearanceDefaultsVersion
+        )
+        if let data = defaults.data(forKey: Keys.developerAppearance),
+           let decoded = try? JSONDecoder().decode(MenuBarAppearance.self, from: data) {
+            var migrated = decoded
+            if appearanceDefaultsVersion < 1 {
+                migrated = migrated.migratingLegacyRingDefaults()
+            }
+            if appearanceDefaultsVersion < 2 {
+                migrated = migrated.migratingLegacyTimeColor()
+            }
+            let normalized = migrated.normalized()
+            developerAppearance = normalized
+
+            if appearanceDefaultsVersion < 2,
+               let migratedData = try? JSONEncoder().encode(normalized) {
+                defaults.set(migratedData, forKey: Keys.developerAppearance)
+            }
+        } else {
+            developerAppearance = .acceptedV1
+        }
+        defaults.set(2, forKey: Keys.developerAppearanceDefaultsVersion)
+        developerPreviewEnabled = defaults.bool(forKey: Keys.developerPreviewEnabled)
+        developerPreviewPreset = DeveloperPreviewPreset(
+            rawValue: defaults.string(forKey: Keys.developerPreviewPreset) ?? ""
+        ) ?? .normal
+        developerPreviewRemainingPercent = Self.storedPreviewPercent(
+            defaults,
+            key: Keys.developerPreviewRemainingPercent,
+            fallback: 72
+        )
+        developerPreviewRemainingTimePercent = Self.storedPreviewPercent(
+            defaults,
+            key: Keys.developerPreviewRemainingTimePercent,
+            fallback: 55
+        )
+        L10n.setLanguage(language.languageCode)
+        failedPushCredentials = Set(loadedCredentials.compactMap { $0.value.failed ? $0.key : nil })
+        updatePushCredentialError()
+        refreshLaunchAtLoginStatus()
+    }
+
+    private func persistPushCredential(_ value: String, for credential: PushCredential) {
+        do {
+            try pushCredentials.save(value, for: credential)
+            failedPushCredentials.remove(credential)
+        } catch {
+            failedPushCredentials.insert(credential)
+        }
+        updatePushCredentialError()
+    }
+
+    private func updatePushCredentialError() {
+        pushCredentialError = failedPushCredentials.isEmpty
+            ? nil : L10n.string("settings.push.credentials_error")
+    }
+
+    func resetDeveloperOptions() {
+        menuBarStyle = .progressAndPercentage
+        developerAppearance = .acceptedV1
+        developerPreviewEnabled = false
+        developerPreviewPreset = .normal
+        developerPreviewRemainingPercent = 72
+        developerPreviewRemainingTimePercent = 55
+    }
+
+    func setPopoverSection(_ section: PopoverContentSection, visible: Bool) {
+        var updated = popoverContent
+        updated.setSection(section, visible: visible)
+        popoverContent = updated
+    }
+
+    func setQuotaWindow(_ window: UsageWindow, visible: Bool) {
+        var updated = popoverContent
+        updated.setQuotaWindow(window, visible: visible)
+        popoverContent = updated
+    }
+
+    func movePopoverSection(_ section: PopoverContentSection, by offset: Int) {
+        var updated = popoverContent
+        updated.moveSection(section, by: offset)
+        popoverContent = updated
+    }
+
+    func setMenuBarWindowID(_ id: String?, account: String) {
+        var updated = popoverContent
+        updated.setMenuBarWindowID(id, account: account)
+        popoverContent = updated
+    }
+
+    static func normalizedAccounts(_ accounts: [StoredQuotaAccount]) -> [StoredQuotaAccount] {
+        StoredQuotaAccount.normalized(accounts)
+    }
+
+    func resetPopoverContent() {
+        popoverContent = .defaultValue
+    }
+
+    var developerPreviewSnapshot: MenuBarPreviewSnapshot {
+        if developerPreviewPreset == .custom {
+            return .custom(
+                remainingPercent: developerPreviewRemainingPercent,
+                remainingTimePercent: developerPreviewRemainingTimePercent
+            )
+        }
+
+        let snapshot = developerPreviewPreset.snapshot
+        guard developerPreviewPreset == .longText else { return snapshot }
+        return MenuBarPreviewSnapshot(
+            remainingPercent: snapshot.remainingPercent,
+            remainingTimePercent: snapshot.remainingTimePercent,
+            title: L10n.string("developer.preview_long_title"),
+            attentionLevel: snapshot.attentionLevel,
+            isStale: snapshot.isStale
+        )
+    }
+
+    func selectDeveloperPreviewPreset(_ preset: DeveloperPreviewPreset) {
+        developerPreviewPreset = preset
+        guard preset != .custom else { return }
+
+        let snapshot = developerPreviewSnapshot
+        if let remainingPercent = snapshot.remainingPercent {
+            developerPreviewRemainingPercent = Double(remainingPercent)
+        }
+        if let remainingTimePercent = snapshot.remainingTimePercent {
+            developerPreviewRemainingTimePercent = remainingTimePercent
+        }
+    }
+
+    func setDeveloperPreviewRemainingPercent(_ value: Double) {
+        developerPreviewRemainingPercent = value.clamped(to: 0...100)
+        developerPreviewPreset = .custom
+    }
+
+    func setDeveloperPreviewRemainingTimePercent(_ value: Double) {
+        developerPreviewRemainingTimePercent = value.clamped(to: 0...100)
+        developerPreviewPreset = .custom
+    }
+
+    func developerConfigurationJSON() -> String? {
+        let configuration = DeveloperAppearanceExport(
+            menuBarStyle: menuBarStyle,
+            appearance: developerAppearance.normalized()
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(configuration) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    func showSettingsError(_ message: String, destination: SettingsDestination? = nil) {
+        settingsDestination = destination
+        settingsError = message
+    }
+
+    func clearSettingsError() {
+        settingsError = nil
+        settingsDestination = nil
+    }
+
+    func openRelevantSystemSettings() {
+        // These URLs open the pane where macOS owns the final permission state.
+        let urlString: String
+        switch settingsDestination {
+        case .notifications:
+            let bundleID = Bundle.main.bundleIdentifier ?? AppIdentity.bundleIdentifier
+            urlString = "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(bundleID)"
+        case .loginItems:
+            urlString = "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"
+        case nil:
+            return
+        }
+
+        if let url = URL(string: urlString) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            refreshLaunchAtLoginStatus()
+            // Registration may succeed while macOS still requires user approval.
+            if SMAppService.mainApp.status == .requiresApproval {
+                showSettingsError(
+                    L10n.string("settings.launch_requires_approval"),
+                    destination: .loginItems
+                )
+            } else {
+                clearSettingsError()
+            }
+        } catch {
+            refreshLaunchAtLoginStatus()
+            showSettingsError(
+                L10n.format("settings.launch_error_format", error.localizedDescription),
+                destination: .loginItems
+            )
+        }
+    }
+
+    func refreshLaunchAtLoginStatus() {
+        let status = SMAppService.mainApp.status
+        // Keep the toggle on when registration exists but awaits system approval.
+        launchAtLoginEnabled = status == .enabled || status == .requiresApproval
+    }
+
+    private static func storedPreviewPercent(
+        _ defaults: UserDefaults,
+        key: String,
+        fallback: Double
+    ) -> Double {
+        let stored = (defaults.object(forKey: key) as? NSNumber)?.doubleValue ?? fallback
+        return stored.clamped(to: 0...100)
+    }
+}
+
+private extension Double {
+    func clamped(to range: ClosedRange<Double>) -> Double {
+        min(range.upperBound, max(range.lowerBound, self))
+    }
+}
+
+private struct DeveloperAppearanceExport: Codable {
+    let menuBarStyle: MenuBarDisplayStyle
+    let appearance: MenuBarAppearance
+}

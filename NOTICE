@@ -1,0 +1,29 @@
+HalfTank
+========
+
+This project is a derivative work of **CodexMeter** by Raycal
+(https://github.com/raycalrui/CodexMeter), released under the MIT License,
+copyright (c) 2026 Raycal.
+
+The original project supplied the native macOS menu bar application, the
+two-ring quota visualization, the local SQLite quota history with charts and
+backup/restore, the Codex App Server integration, the notification pipeline,
+and the Sparkle build and release tooling. The visual design and the core idea
+are the original author's work.
+
+HalfTank adds:
+
+- OpenCode Go as a second quota source, read through the official `opencode`
+  CLI or the console API its credentials already authorize;
+- several accounts at once, with Codex logins isolated per `CODEX_HOME`;
+- a community reset estimate with a per-signal explanation;
+- a pace-aware exhaustion projection reported as a range;
+- reset credit guidance that follows a chosen strategy;
+- an independent bundle identifier, data directory, update feed, and update
+  signing key.
+
+The MIT license text and the original copyright notice are preserved in
+LICENSE. Nothing in this repository is endorsed by the original author.
+
+Codex, OpenAI, OpenCode, and other product names are trademarks of their
+respective owners. This project is unaffiliated with all of them.

@@ -275,7 +275,10 @@ much money a full ring represents (for example `100`) and the ring, the menu bar
 percentage, and the pace hints start working. Leave it empty to keep the
 provider money-only; the menu bar then shows the amount instead of an empty
 ring. The balance has no reset cycle, so reset-related sections never appear for
-this provider, and it keeps no history in this version.
+this provider, and it keeps no history in this version. The provider is
+optional: remove it from **Settings → General → Accounts** to hide the tab and
+stop the requests, then add it back from the same menu whenever you want it. The
+stored key survives removal, so re-adding it resumes immediately.
 
 ### Multiple Codex accounts
 
@@ -541,7 +544,9 @@ Mac App Store distribution.
 The menu-bar **Settings** entry opens one resizable window with General,
 Menu Bar & Popover, Notifications, History & Backup, and Developer, followed by About.
 **General → Accounts** lists every watched account, adds a Codex login by
-choosing its `CODEX_HOME`, and removes extra ones. **General → Quota source**
+choosing its `CODEX_HOME`, and removes extra ones. DeepSeek and OpenCode Go are
+optional: removing one hides its tab and stops its polling, and *Add a source…*
+in the same section brings it back. **General → Quota source**
 picks the tab shown first and, for OpenCode Go, the connection between the
 official CLI and the direct API. **General → DeepSeek balance** saves an API key into the login keychain, shows
 which source the key comes from, and sets the budget a full ring represents.

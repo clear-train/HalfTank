@@ -128,8 +128,9 @@ has changed.
   silent empty balance.
 - `UsageSource.swift` and `UsageCoordinator.swift` keep the UI account-neutral.
   Views observe the coordinator, which forwards to the source the popover is
-  showing. Every account keeps its own refresh timer and keeps recording history
-  under its own account key; only the shown account calls
+  showing. Optional sources are only started when their account row exists, so
+  removing one really stops its requests. Every account keeps its own refresh
+  timer and keeps recording history under its own account key; only the shown account calls
   `history.activateAccount` (see `setHistoryViewActive`), because the history
   model exposes a single visible partition. Add a provider by conforming to
   `UsageSource` and adding a case, not by editing views.
@@ -137,10 +138,14 @@ has changed.
   name, and for Codex the `CODEX_HOME` folder that holds its `auth.json`. Several
   Codex accounts coexist because each one is a separate home directory and thus
   a separate `codex app-server` child with its own credentials. The default
-  `~/.codex` account, DeepSeek, and OpenCode Go are not removable so the popover
-  always has a source. `StoredQuotaAccount.normalized` keeps the default Codex
-  account first and OpenCode Go last (DeepSeek sits in between), and drops
-  duplicate identifiers, because one identifier owns
+  `~/.codex` account is not removable so the app always has one source, while
+  DeepSeek and OpenCode Go are optional: removing one hides its tab, stops its
+  polling, and keeps it removed across launches, and Settings lists the missing
+  ones under *Add a source…* so it can be restored without editing preferences.
+  Removing DeepSeek keeps the stored API key, so re-adding it resumes at once.
+  `StoredQuotaAccount.normalized` keeps the default Codex account first and
+  OpenCode Go last (DeepSeek sits in between), never re-adds a provider the user
+  turned off, and drops duplicate identifiers, because one identifier owns
   one live service and one history partition. A Codex home without `auth.json`
   must report a sign-in message instead of spawning a child that would exit
   immediately on every retry.

@@ -13,18 +13,29 @@ final class QuotaAccountTests: XCTestCase {
         XCTAssertEqual(seeded.first?.provider, .codex)
         XCTAssertEqual(seeded.first?.codexHomeDirectory?.path, StoredQuotaAccount.defaultCodexHomeDirectory().path)
         XCTAssertFalse(seeded[0].isRemovable)
-        XCTAssertFalse(seeded[1].isRemovable)
-        XCTAssertFalse(seeded[2].isRemovable)
+        XCTAssertTrue(seeded[1].isRemovable)
+        XCTAssertTrue(seeded[2].isRemovable)
     }
 
-    func testNormalizingEmptyAccountsRestoresBothDefaults() {
+    func testNormalizingEmptyAccountsRestoresOnlyTheDefaultCodexLogin() {
+        // Optional sources stay removed: re-adding them here would undo the
+        // user turning a provider off.
         let normalized = StoredQuotaAccount.normalized([])
 
-        XCTAssertEqual(normalized.map(\.id), [
-            StoredQuotaAccount.defaultCodexID,
-            StoredQuotaAccount.deepSeekID,
-            StoredQuotaAccount.openCodeGoID
-        ])
+        XCTAssertEqual(normalized.map(\.id), [StoredQuotaAccount.defaultCodexID])
+    }
+
+    func testNormalizingKeepsARemovedOptionalSourceRemoved() {
+        let kept = StoredQuotaAccount(
+            id: StoredQuotaAccount.defaultCodexID,
+            provider: .codex,
+            displayName: "Codex",
+            codexHomeDirectoryPath: "/tmp/home"
+        )
+
+        let normalized = StoredQuotaAccount.normalized([kept])
+
+        XCTAssertEqual(normalized.map(\.id), [StoredQuotaAccount.defaultCodexID])
     }
 
     func testNormalizingKeepsExtraCodexLoginsBetweenTheDefaults() {
@@ -39,7 +50,7 @@ final class QuotaAccountTests: XCTestCase {
 
         XCTAssertEqual(
             normalized.map(\.id),
-            [StoredQuotaAccount.defaultCodexID, "codex-work", StoredQuotaAccount.deepSeekID, StoredQuotaAccount.openCodeGoID]
+            [StoredQuotaAccount.defaultCodexID, "codex-work", StoredQuotaAccount.openCodeGoID]
         )
         XCTAssertTrue(normalized[1].isRemovable)
     }
@@ -63,7 +74,7 @@ final class QuotaAccountTests: XCTestCase {
         let normalized = StoredQuotaAccount.normalized([first, second])
 
         XCTAssertEqual(normalized.filter { $0.id == "codex-work" }.count, 1)
-        XCTAssertEqual(normalized.last?.id, StoredQuotaAccount.openCodeGoID)
+        XCTAssertEqual(normalized.map(\.id), [StoredQuotaAccount.defaultCodexID, "codex-work"])
     }
 
     func testStoredAccountsDecodeFromTheSettingsJSONWrittenByTheApp() throws {

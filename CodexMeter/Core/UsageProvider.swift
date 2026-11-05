@@ -38,6 +38,10 @@ nonisolated enum UsageProvider: String, CaseIterable, Codable, Identifiable, Sen
     }
 
     /// Stable namespace that keeps local history separate per provider.
+    /// Sources a user can add or remove from the account list. The default
+    /// Codex login is always present, so it is not part of this list.
+    static var optionalProviders: [UsageProvider] { [.deepSeek, .openCodeGo] }
+
     var historyNamespace: String {
         switch self {
         case .codex: "codex"

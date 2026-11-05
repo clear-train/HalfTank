@@ -145,7 +145,7 @@ final class DeepSeekTests: XCTestCase {
             StoredQuotaAccount.deepSeekID,
             StoredQuotaAccount.openCodeGoID
         ])
-        XCTAssertFalse(accounts.first { $0.id == StoredQuotaAccount.deepSeekID }?.isRemovable ?? true)
+        XCTAssertTrue(accounts.first { $0.id == StoredQuotaAccount.deepSeekID }?.isRemovable ?? false)
     }
 
     private func parse(_ json: String) throws -> DeepSeekBalanceSnapshot {

@@ -85,6 +85,13 @@ struct AppSettingsView: View {
                     accountRow(account)
                 }
                 Button(L10n.string("settings.accounts.add")) { addCodexAccount() }
+                if !missingProviders.isEmpty {
+                    Menu(L10n.string("settings.accounts.add_source")) {
+                        ForEach(missingProviders, id: \.self) { provider in
+                            Button(provider.localizedName) { service.addProvider(provider) }
+                        }
+                    }
+                }
                 Text(L10n.string("settings.accounts.help"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -231,6 +238,13 @@ struct AppSettingsView: View {
             return account.displayName
         }
         return "\(account.displayName) \(remaining)%"
+    }
+
+    /// Sources the user removed and can add back without restarting the app.
+    private var missingProviders: [UsageProvider] {
+        UsageProvider.optionalProviders.filter { provider in
+            !service.accounts.contains { $0.provider == provider }
+        }
     }
 
     private func accountRow(_ account: StoredQuotaAccount) -> some View {

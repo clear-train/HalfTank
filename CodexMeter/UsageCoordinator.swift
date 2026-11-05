@@ -34,10 +34,18 @@ final class UsageCoordinator: ObservableObject {
         self.accountID = stored.contains(where: { $0.id == settings.usageAccountID })
             ? settings.usageAccountID
             : (stored.first?.id ?? StoredQuotaAccount.defaultCodexID)
-        self.openCodeGo = OpenCodeGoUsageService(settings: settings, history: history)
+        // Optional sources only run when the user keeps them in the account
+        // list; removing one stops its polling instead of hiding a live source.
+        let enabledProviders = Set(stored.map(\.provider))
+        self.openCodeGo = OpenCodeGoUsageService(
+            settings: settings,
+            history: history,
+            autostart: enabledProviders.contains(.openCodeGo)
+        )
         self.deepSeek = DeepSeekUsageService(
             settings: settings,
-            budget: Decimal(settings.deepSeekBudget)
+            budget: Decimal(settings.deepSeekBudget),
+            autostart: enabledProviders.contains(.deepSeek)
         )
 
         var services: [String: CodexUsageService] = [:]
@@ -145,11 +153,43 @@ final class UsageCoordinator: ObservableObject {
         return account
     }
 
+    /// Adds one of the optional sources back after the user removed it. The
+    /// service already exists, so this only restores the account row, its
+    /// refresh timer, and its forwarding.
+    @discardableResult
+    func addProvider(_ provider: UsageProvider) -> StoredQuotaAccount? {
+        if let existing = accounts.first(where: { $0.provider == provider && provider != .codex }) {
+            return existing
+        }
+        let account: StoredQuotaAccount
+        switch provider {
+        case .deepSeek:
+            account = .deepSeekAccount()
+        case .openCodeGo:
+            account = .openCodeGoAccount()
+        case .codex:
+            return nil
+        }
+        var updated = accounts
+        updated.append(account)
+        accounts = AppSettings.normalizedAccounts(updated)
+        settings.accounts = accounts
+        source(for: account.id)?.activate()
+        bindForwarding()
+        applyHistoryViewOwnership()
+        return account
+    }
+
     func removeAccount(id: String) {
         guard let account = account(withID: id), account.isRemovable else { return }
-        if account.provider == .codex {
+        switch account.provider {
+        case .codex:
             codexServices[id]?.deactivate()
             codexServices.removeValue(forKey: id)
+        case .deepSeek:
+            deepSeek.deactivate()
+        case .openCodeGo:
+            openCodeGo.deactivate()
         }
         forwarders[id] = nil
         accounts.removeAll { $0.id == id }

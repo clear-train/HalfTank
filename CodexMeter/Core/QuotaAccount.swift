@@ -41,15 +41,17 @@ nonisolated struct StoredQuotaAccount: Codable, Identifiable, Hashable, Sendable
         StoredQuotaAccount(id: deepSeekID, provider: .deepSeek, displayName: "DeepSeek", codexHomeDirectoryPath: nil)
     }
 
-    /// Accounts that always exist so the app has something to show before the
-    /// user adds anything.
+    /// Accounts a fresh installation starts with. DeepSeek and OpenCode Go are
+    /// optional sources: they appear here once, and the user can remove them
+    /// again from Settings.
     static func seededAccounts() -> [StoredQuotaAccount] {
         [defaultAccount(), deepSeekAccount(), openCodeGoAccount()]
     }
 
-    /// Keeps persisted accounts usable: the two provider defaults always exist,
+    /// Keeps persisted accounts usable: the default Codex login always exists,
     /// and duplicate identifiers never survive because each identifier owns one
-    /// live service and one history partition.
+    /// live service and one history partition. Optional providers are not
+    /// re-added here, so removing one stays removed across launches.
     nonisolated static func normalized(_ accounts: [StoredQuotaAccount]) -> [StoredQuotaAccount] {
         var result: [StoredQuotaAccount] = []
         var seen = Set<String>()
@@ -59,12 +61,15 @@ nonisolated struct StoredQuotaAccount: Codable, Identifiable, Hashable, Sendable
         if !result.contains(where: { $0.id == defaultCodexID }) {
             result.insert(.defaultAccount(), at: 0)
         }
-        // The provider defaults stay the last tabs so extra Codex logins, the
-        // reason a user adds accounts at all, sit next to the default login.
-        result.removeAll { $0.id == deepSeekID || $0.id == openCodeGoID }
-        result.append(.deepSeekAccount())
-        result.append(.openCodeGoAccount())
-        return result
+        // Keep the display order stable: the default Codex login first, extra
+        // Codex logins next, DeepSeek before OpenCode Go.
+        var middle = result.filter { $0.id != defaultCodexID && $0.id != openCodeGoID }
+        if let deepSeek = middle.firstIndex(where: { $0.id == deepSeekID }) {
+            middle.append(middle.remove(at: deepSeek))
+        }
+        let tail = result.filter { $0.id == openCodeGoID }
+        let head = result.filter { $0.id == defaultCodexID }
+        return head + middle + tail
     }
 
     var codexHomeDirectory: URL? {
@@ -72,15 +77,16 @@ nonisolated struct StoredQuotaAccount: Codable, Identifiable, Hashable, Sendable
         return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
     }
 
-    /// Whether the account can be deleted. The provider defaults stay so a user
-    /// cannot end up with no Codex account and no way back without editing
-    /// preferences by hand.
+    /// Whether the account can be deleted. The default Codex login stays so the
+    /// app always has one quota source, and because it is the only account that
+    /// cannot be recreated from Settings. DeepSeek and OpenCode Go are optional
+    /// and can be added back from the same list.
     var isRemovable: Bool {
         switch provider {
         case .codex:
             return id != Self.defaultCodexID
         case .openCodeGo, .deepSeek:
-            return false
+            return true
         }
     }
 

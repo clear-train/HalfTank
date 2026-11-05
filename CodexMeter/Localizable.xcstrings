@@ -7085,6 +7085,29 @@
         }
       }
     },
+    "settings.accounts.add_source": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add a source…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加来源…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新增來源…"
+          }
+        }
+      }
+    },
     "settings.accounts.codex_name": {
       "extractionState": "manual",
       "en": {
@@ -7111,19 +7134,19 @@
       "en": {
         "stringUnit": {
           "state": "translated",
-          "value": "Each Codex account is a separate CODEX_HOME folder. Sign in there once, then add it here."
+          "value": "Each Codex account is a separate CODEX_HOME folder. Sign in there once, then add it here. DeepSeek and OpenCode Go are optional sources: remove one to hide its tab and stop its requests, then add it back from this menu."
         }
       },
       "zh-Hans": {
         "stringUnit": {
           "state": "translated",
-          "value": "每个 Codex 账号对应独立的 CODEX_HOME 目录。请先在该目录登录，再添加到这里。"
+          "value": "每个 Codex 账号对应独立的 CODEX_HOME 目录。请先在该目录登录，再添加到这里。DeepSeek 与 OpenCode Go 是可选来源：移除后会隐藏标签页并停止请求，可随时从这个菜单加回。"
         }
       },
       "zh-Hant": {
         "stringUnit": {
           "state": "translated",
-          "value": "每個 Codex 帳號對應獨立的 CODEX_HOME 目錄。請先在該目錄登入，再加入這裡。"
+          "value": "每個 Codex 帳號對應獨立的 CODEX_HOME 目錄。請先在該目錄登入，再加入這裡。DeepSeek 與 OpenCode Go 是可選來源：移除後會隱藏標籤頁並停止請求，可隨時從這個選單加回。"
         }
       }
     },

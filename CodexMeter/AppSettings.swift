@@ -457,9 +457,9 @@ final class AppSettings: ObservableObject {
             storedAccounts = StoredQuotaAccount.seededAccounts()
         }
         accounts = storedAccounts
-        // Adding a provider default (DeepSeek) changes `normalizedAccounts`, and
-        // the assignment above does not fire `didSet` during initialization, so
-        // persist the normalized list once here instead of waiting for a edit.
+        // The assignment above does not fire `didSet` during initialization, so
+        // persist the normalized list once here; a fresh install has to store its
+        // seeded accounts and a dropped duplicate must not survive a relaunch.
         if let data = defaults.data(forKey: Keys.usageAccounts),
            let encoded = try? JSONEncoder().encode(storedAccounts),
            data != encoded {

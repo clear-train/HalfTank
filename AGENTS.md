@@ -27,9 +27,12 @@ remaining Codex account quota without requiring the user to open Codex.
   with visually prominent strokes: outer quota at 3 points and inner time at
   2 points. Use the brighter blue appearance choice for the default time color
   so the thinner inner ring remains legible.
-- The accepted application icon uses a warm ivory background with a burgundy
-  abstract code mark and a cream segmented meter with a coral active segment.
-  Keep the source icon simple and legible at the 16-point macOS size.
+- The accepted application icon is a deep navy squircle holding a silver ring
+  whose lower half is filled with a mint-to-blue liquid, read as a half-full
+  tank. It is rendered from `Scripts/generate_app_icon.py`, which owns the
+  geometry and writes every slot in `Assets.xcassets/AppIcon.appiconset`;
+  edit the script rather than the PNGs so the sizes stay consistent. Keep the
+  shape simple and legible at the 16-point macOS size.
 
 ## AGENTS.md maintenance
 

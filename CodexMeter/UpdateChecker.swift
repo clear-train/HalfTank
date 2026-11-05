@@ -15,6 +15,7 @@ struct AvailableUpdate: Equatable, Identifiable {
 @MainActor
 final class UpdateChecker: NSObject, ObservableObject, SPUUpdaterDelegate {
     enum State: Equatable {
+        case notConfigured
         case idle
         case checking
         case upToDate
@@ -27,21 +28,37 @@ final class UpdateChecker: NSObject, ObservableObject, SPUUpdaterDelegate {
     @Published private(set) var isDeveloperPreview = false
 
     private let releasesURL = AppIdentity.repositoryURL.appendingPathComponent("releases")
+    /// A build shipped without an EdDSA key or feed has no download source yet.
+    /// Starting Sparkle in that state only produces an error the user cannot act
+    /// on, so the updater stays off and the About pane explains why.
+    private let feedIsConfigured: Bool
     private var includesPrereleases: Bool
     private var stateBeforeDeveloperPreview: State?
     private var updaterController: SPUStandardUpdaterController!
 
     init(includePrereleases: Bool = false) {
         includesPrereleases = includePrereleases
+        feedIsConfigured = Self.hasConfiguredFeed()
         super.init()
 
         updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
+            startingUpdater: feedIsConfigured,
             updaterDelegate: self,
             userDriverDelegate: nil
         )
         refreshPreferences()
     }
+
+    /// Sparkle needs both a feed URL and the EdDSA public key that verifies the
+    /// archives. Either one missing means this build cannot update itself.
+    private static func hasConfiguredFeed() -> Bool {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let key = (info["SUPublicEDKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let feed = (info["SUFeedURL"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return !key.isEmpty && !feed.isEmpty
+    }
+
+    var isUpdateFeedConfigured: Bool { feedIsConfigured }
 
     var installedVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
@@ -56,10 +73,14 @@ final class UpdateChecker: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     var canCheckForUpdates: Bool {
-        updaterController.updater.canCheckForUpdates
+        feedIsConfigured && updaterController.updater.canCheckForUpdates
     }
 
     func check(includePrereleases: Bool) {
+        guard feedIsConfigured else {
+            state = .notConfigured
+            return
+        }
         setIncludesPrereleases(includePrereleases)
         if isDeveloperPreview {
             clearDeveloperPreview()
@@ -69,18 +90,20 @@ final class UpdateChecker: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     func setIncludesPrereleases(_ includePrereleases: Bool) {
-        guard includesPrereleases != includePrereleases else { return }
+        guard feedIsConfigured, includesPrereleases != includePrereleases else { return }
         includesPrereleases = includePrereleases
         updaterController.updater.resetUpdateCycleAfterShortDelay()
     }
 
     func setAutomaticallyInstallsUpdates(_ enabled: Bool) {
+        guard feedIsConfigured else { return }
         updaterController.updater.automaticallyDownloadsUpdates = enabled
         refreshPreferences()
     }
 
     func refreshPreferences() {
-        automaticallyInstallsUpdates = updaterController.updater.automaticallyDownloadsUpdates
+        automaticallyInstallsUpdates = feedIsConfigured
+            && updaterController.updater.automaticallyDownloadsUpdates
     }
 
     func showDeveloperUpdatePreview() {

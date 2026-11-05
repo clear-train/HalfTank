@@ -75,43 +75,53 @@ struct AboutView: View {
     private var updateSection: some View {
         GroupBox(L10n.string("updates.title")) {
             VStack(alignment: .leading, spacing: 10) {
-                Toggle(
-                    L10n.string("updates.include_prereleases"),
-                    isOn: Binding(
-                        get: { settings.includePrereleaseUpdates },
-                        set: { includePrereleases in
-                            settings.includePrereleaseUpdates = includePrereleases
-                            updateChecker.setIncludesPrereleases(includePrereleases)
+                if updateChecker.isUpdateFeedConfigured {
+                    Toggle(
+                        L10n.string("updates.include_prereleases"),
+                        isOn: Binding(
+                            get: { settings.includePrereleaseUpdates },
+                            set: { includePrereleases in
+                                settings.includePrereleaseUpdates = includePrereleases
+                                updateChecker.setIncludesPrereleases(includePrereleases)
+                            }
+                        )
+                    )
+
+                    Toggle(
+                        L10n.string("updates.automatic_install"),
+                        isOn: Binding(
+                            get: { updateChecker.automaticallyInstallsUpdates },
+                            set: { updateChecker.setAutomaticallyInstallsUpdates($0) }
+                        )
+                    )
+                    .disabled(!updateChecker.allowsAutomaticUpdates)
+
+                    updateStatus
+
+                    Button {
+                        updateChecker.check(
+                            includePrereleases: settings.includePrereleaseUpdates
+                        )
+                    } label: {
+                        if updateChecker.state == .checking {
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text(L10n.string("updates.checking"))
+                            }
+                        } else {
+                            Text(L10n.string("updates.check"))
                         }
-                    )
-                )
-
-                Toggle(
-                    L10n.string("updates.automatic_install"),
-                    isOn: Binding(
-                        get: { updateChecker.automaticallyInstallsUpdates },
-                        set: { updateChecker.setAutomaticallyInstallsUpdates($0) }
-                    )
-                )
-                .disabled(!updateChecker.allowsAutomaticUpdates)
-
-                updateStatus
-
-                Button {
-                    updateChecker.check(
-                        includePrereleases: settings.includePrereleaseUpdates
-                    )
-                } label: {
-                    if updateChecker.state == .checking {
-                        HStack {
-                            ProgressView().controlSize(.small)
-                            Text(L10n.string("updates.checking"))
-                        }
-                    } else {
-                        Text(L10n.string("updates.check"))
+                    }
+                    .disabled(!updateChecker.canCheckForUpdates)
+                } else {
+                    Text(L10n.string("updates.unavailable_development"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Link(destination: repositoryURL.appendingPathComponent("releases")) {
+                        Label(L10n.string("updates.open_release"), systemImage: "arrow.up.right.square")
                     }
                 }
-                .disabled(!updateChecker.canCheckForUpdates)
             }
             .padding(.top, 6)
         }
@@ -123,6 +133,10 @@ struct AboutView: View {
     @ViewBuilder
     private var updateStatus: some View {
         switch updateChecker.state {
+        case .notConfigured:
+            Text(L10n.string("updates.unavailable_development"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .idle:
             Text(L10n.string("updates.not_checked"))
                 .foregroundStyle(.secondary)

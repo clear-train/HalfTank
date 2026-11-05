@@ -235,7 +235,11 @@ has changed.
   popover focus changes. Use the native traffic-light controls instead of an
   additional in-content Close button.
 - `UpdateChecker.swift` adapts Sparkle's standard updater to app state, stable
-  and beta channels, manual checks, and the automatic-install preference.
+  and beta channels, manual checks, and the automatic-install preference. A build
+  whose `Info.plist` has no `SUPublicEDKey` or no `SUFeedURL` cannot self-update,
+  so the updater must not start at all: showing a check button or letting Sparkle
+  report a signature/feed failure only produces an error the user cannot act on.
+  About then points at the releases page instead.
   Sparkle owns the daily schedule, signed download, replacement, and relaunch.
   `AboutView.swift` presents version/build, update channel, automatic-install
   preference, repository, local data location, privacy, and license status.

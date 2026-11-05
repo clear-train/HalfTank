@@ -153,19 +153,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quota and token history stays on this Mac. CodexMeter stores no account email, Codex authentication token, or raw App Server response and includes no analytics. Optional remote notifications send only the quota-window name and observed remaining quota to your chosen service. Push credentials are stored locally in Keychain."
+            "value": "Quota and token history stays on this Mac. HalfTank stores no account email, Codex authentication token, or raw App Server response and includes no analytics. Optional remote notifications send only the quota-window name and observed remaining quota to your chosen service. Push credentials are stored locally in Keychain."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "额度和 Token 历史只保存在这台 Mac。CodexMeter 不保存账户邮箱、Codex 认证 Token 或 App Server 原始响应，也不包含分析追踪。可选远程通知仅向指定服务发送额度窗口名称和观测到的剩余额度，推送密钥保存在本地钥匙串中。"
+            "value": "额度和 Token 历史只保存在这台 Mac。HalfTank 不保存账户邮箱、Codex 认证 Token 或 App Server 原始响应，也不包含分析追踪。可选远程通知仅向指定服务发送额度窗口名称和观测到的剩余额度，推送密钥保存在本地钥匙串中。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "額度和 Token 歷史只儲存在這台 Mac。CodexMeter 不儲存帳戶電子郵件、Codex 認證 Token 或 App Server 原始回應，也不包含分析追蹤。可選遠端通知僅向指定服務傳送額度視窗名稱和觀測到的剩餘額度，推播金鑰儲存在本機鑰匙圈中。"
+            "value": "額度和 Token 歷史只儲存在這台 Mac。HalfTank 不儲存帳戶電子郵件、Codex 認證 Token 或 App Server 原始回應，也不包含分析追蹤。可選遠端通知僅向指定服務傳送額度視窗名稱和觀測到的剩餘額度，推播金鑰儲存在本機鑰匙圈中。"
           }
         }
       }
@@ -728,19 +728,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Could not complete the operation. Check file access and free space. Restore requires a valid backup from a supported CodexMeter version."
+            "value": "Could not complete the operation. Check file access and free space. Restore requires a valid backup exported by a supported version."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "操作未完成。请检查文件权限与可用空间。恢复需要使用受支持版本生成的有效 CodexMeter 备份。"
+            "value": "操作未完成。请检查文件权限与可用空间。恢复需要使用受支持版本导出的有效备份文件。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "操作未完成。請檢查檔案權限與可用空間。還原需要使用受支援版本產生的有效 CodexMeter 備份。"
+            "value": "操作未完成。請檢查檔案權限與可用空間。還原需要使用受支援版本產生的有效備份檔案。"
           }
         }
       }
@@ -751,19 +751,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Quit CodexMeter"
+            "value": "Quit HalfTank"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "退出 CodexMeter"
+            "value": "退出 HalfTank"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "結束 CodexMeter"
+            "value": "結束 HalfTank"
           }
         }
       }
@@ -774,19 +774,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "History collection is paused. Quit and reopen CodexMeter to use the restored history. Your current retention setting will apply after reopening."
+            "value": "History collection is paused. Quit and reopen HalfTank to use the restored history. Your current retention setting will apply after reopening."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "历史记录已暂停写入。请退出并重新打开 CodexMeter，以使用恢复的历史。重新打开后将应用当前的历史保留期限设置。"
+            "value": "历史记录已暂停写入。请退出并重新打开 HalfTank，以使用恢复的历史。重新打开后将应用当前的历史保留期限设置。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "歷史記錄已暫停寫入。請結束並重新開啟 CodexMeter，以使用還原的歷史。重新開啟後將套用目前的歷史保留期限設定。"
+            "value": "歷史記錄已暫停寫入。請結束並重新開啟 HalfTank，以使用還原的歷史。重新開啟後將套用目前的歷史保留期限設定。"
           }
         }
       }
@@ -4130,19 +4130,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter records changes and a 15-minute anchor while it is running. Check back after more refreshes."
+            "value": "HalfTank records changes and a 15-minute anchor while it is running. Check back after more refreshes."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter 会在运行期间记录额度变化和每 15 分钟的锚点。刷新几次后再回来查看。"
+            "value": "HalfTank 会在运行期间记录额度变化和每 15 分钟的锚点。刷新几次后再回来查看。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter 會在執行期間記錄額度變化和每 15 分鐘的錨點。重新整理幾次後再回來檢視。"
+            "value": "HalfTank 會在執行期間記錄額度變化和每 15 分鐘的錨點。重新整理幾次後再回來檢視。"
           }
         }
       }
@@ -7887,19 +7887,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Notifications are disabled for CodexMeter. Enable them in System Settings."
+            "value": "Notifications are disabled for HalfTank. Enable them in System Settings."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter 的通知权限已关闭，请前往系统设置开启。"
+            "value": "HalfTank 的通知权限已关闭，请前往系统设置开启。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter 的通知權限已關閉，請前往系統設定開啟。"
+            "value": "HalfTank 的通知權限已關閉，請前往系統設定開啟。"
           }
         }
       }
@@ -8531,19 +8531,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter reads OpenCode Go quota from the OpenCode session you are already signed in to. If the preferred connection fails, the other one is used automatically."
+            "value": "HalfTank reads OpenCode Go quota from the OpenCode session you are already signed in to. If the preferred connection fails, the other one is used automatically."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter 从你已登录的 OpenCode 会话读取 Go 额度。首选方式失败时会自动改用另一种连接。"
+            "value": "HalfTank 从你已登录的 OpenCode 会话读取 Go 额度。首选方式失败时会自动改用另一种连接。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter 從你已登入的 OpenCode 工作階段讀取 Go 額度。首選方式失敗時會自動改用另一種連線。"
+            "value": "HalfTank 從你已登入的 OpenCode 工作階段讀取 Go 額度。首選方式失敗時會自動改用另一種連線。"
           }
         }
       }
@@ -8754,19 +8754,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Send a reminder when a selected quota window is replenished. Channels are off by default. CodexMeter must be running and online. Only the window name and observed remaining quota are sent; credentials stay in this Mac’s Keychain."
+            "value": "Send a reminder when a selected quota window is replenished. Channels are off by default. HalfTank must be running and online. Only the window name and observed remaining quota are sent; credentials stay in this Mac’s Keychain."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "选定额度窗口恢复时发送提醒。所有渠道默认关闭，需要 CodexMeter 运行且联网。仅发送窗口名称与观测到的剩余额度；密钥保存在此 Mac 的钥匙串中。"
+            "value": "选定额度窗口恢复时发送提醒。所有渠道默认关闭，需要 HalfTank 运行且联网。仅发送窗口名称与观测到的剩余额度；密钥保存在此 Mac 的钥匙串中。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "選定額度視窗恢復時傳送提醒。所有管道預設關閉，需要 CodexMeter 執行且連線。僅傳送視窗名稱與觀測到的剩餘額度；金鑰儲存在此 Mac 的鑰匙圈中。"
+            "value": "選定額度視窗恢復時傳送提醒。所有管道預設關閉，需要 HalfTank 執行且連線。僅傳送視窗名稱與觀測到的剩餘額度；金鑰儲存在此 Mac 的鑰匙圈中。"
           }
         }
       }
@@ -9282,19 +9282,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter Test"
+            "value": "HalfTank Test"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter 测试推送"
+            "value": "HalfTank 测试推送"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter 測試推播"
+            "value": "HalfTank 測試推播"
           }
         }
       }
@@ -9758,24 +9758,24 @@
       }
     },
     "updates.available_format": {
-      "extractionState": "stale",
+      "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter %@ is available"
+            "value": "Version %@ is available"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter %@ 可更新"
+            "value": "有可用更新 %@"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter %@ 可更新"
+            "value": "有可用更新 %@"
           }
         }
       }
@@ -9987,25 +9987,48 @@
         }
       }
     },
-    "updates.up_to_date": {
-      "extractionState": "stale",
+    "updates.unavailable_development": {
+      "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter is up to date."
+            "value": "This build has no update feed configured, so it cannot check for updates. Download new builds from the releases page."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter 已是最新版本。"
+            "value": "当前构建没有配置更新源，因此无法检查更新。可从发布页面手动下载新版本。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "CodexMeter 已是最新版本。"
+            "value": "目前建置沒有設定更新來源，因此無法檢查更新。可從發佈頁面手動下載新版本。"
+          }
+        }
+      }
+    },
+    "updates.up_to_date": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're up to date"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已是最新版本"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已是最新版本"
           }
         }
       }

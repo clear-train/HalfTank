@@ -147,6 +147,7 @@ extension UsageProvider {
         switch self {
         case .codex: "Codex"
         case .openCodeGo: "OpenCode Go"
+        case .deepSeek: "DeepSeek"
         }
     }
 }
@@ -236,6 +237,12 @@ final class AppSettings: ObservableObject {
     /// Off by default because it is the only feature that contacts a third party.
     @Published var resetStrategy: ResetStrategy {
         didSet { defaults.set(resetStrategy.rawValue, forKey: Keys.resetStrategy) }
+    }
+
+    /// Money that counts as a full DeepSeek ring. Zero means the popover shows the
+    /// balance as money and the menu bar shows no percentage.
+    @Published var deepSeekBudget: Double {
+        didSet { defaults.set(deepSeekBudget, forKey: Keys.deepSeekBudget) }
     }
 
     @Published var resetForecastEnabled: Bool {
@@ -381,6 +388,7 @@ final class AppSettings: ObservableObject {
         static let openCodeGoChannel = "usage.openCodeGo.channel"
         static let resetForecastEnabled = "network.resetForecast.enabled"
         static let resetStrategy = "usage.resetStrategy"
+        static let deepSeekBudget = "usage.deepseek.budget"
         static let notificationsEnabled = "notificationsEnabled"
         static let notificationThreshold = "notificationThreshold"
         static let barkEnabled = "push.barkEnabled"
@@ -449,6 +457,14 @@ final class AppSettings: ObservableObject {
             storedAccounts = StoredQuotaAccount.seededAccounts()
         }
         accounts = storedAccounts
+        // Adding a provider default (DeepSeek) changes `normalizedAccounts`, and
+        // the assignment above does not fire `didSet` during initialization, so
+        // persist the normalized list once here instead of waiting for a edit.
+        if let data = defaults.data(forKey: Keys.usageAccounts),
+           let encoded = try? JSONEncoder().encode(storedAccounts),
+           data != encoded {
+            defaults.set(encoded, forKey: Keys.usageAccounts)
+        }
         let legacyProvider = defaults.string(forKey: Keys.legacyUsageProvider)
         if let storedAccountID = defaults.string(forKey: Keys.usageAccountID),
            storedAccounts.contains(where: { $0.id == storedAccountID }) {
@@ -464,6 +480,7 @@ final class AppSettings: ObservableObject {
         resetForecastEnabled = defaults.bool(forKey: Keys.resetForecastEnabled)
         resetStrategy = defaults.string(forKey: Keys.resetStrategy)
             .flatMap(ResetStrategy.init(rawValue:)) ?? .bridge
+        deepSeekBudget = defaults.double(forKey: Keys.deepSeekBudget)
         notificationsEnabled = defaults.bool(forKey: Keys.notificationsEnabled)
         let storedThreshold = defaults.integer(forKey: Keys.notificationThreshold)
         notificationThreshold = storedThreshold == 0 ? 20 : storedThreshold

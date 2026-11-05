@@ -119,6 +119,10 @@ struct ContentView: View {
             } else if let errorMessage = service.errorMessage,
                       service.windows.isEmpty {
                 errorView(errorMessage)
+            } else if service.activeAccount.provider == .deepSeek,
+                      service.balanceSnapshot == nil,
+                      !service.deepSeek.hasCredentials {
+                missingDeepSeekKeyView
             } else {
                 if let errorMessage = service.errorMessage {
                     inlineErrorView(errorMessage)
@@ -177,6 +181,9 @@ struct ContentView: View {
 
     private func tabTitle(for account: StoredQuotaAccount) -> String {
         guard let remaining = service.remainingPercent(for: account.id) else {
+            if let fallback = service.fallbackTitle(for: account.id) {
+                return "\(account.displayName) \(fallback)"
+            }
             return account.displayName
         }
         return "\(account.displayName) \(remaining)%"
@@ -252,6 +259,23 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, minHeight: 90)
     }
 
+    private var missingDeepSeekKeyView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(L10n.string("balance.needs_key_title"), systemImage: "key")
+                .foregroundStyle(.orange)
+            Text(L10n.string("balance.needs_key_help"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(L10n.string("balance.open_settings")) {
+                openWindow(id: CodexMeterWindowID.settings)
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
+            .controlSize(.small)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func errorView(_ message: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(L10n.string("error.cannot_read"), systemImage: "exclamationmark.triangle")
@@ -285,13 +309,13 @@ struct ContentView: View {
 
             switch section {
             case .quotaWindows:
-                return !visibleQuotaWindows.isEmpty
+                return !visibleQuotaWindows.isEmpty || service.balanceSnapshot != nil
             case .resetCredits:
                 return service.rateLimitResetCredits != nil
             case .resetForecast:
                 return settings.resetForecastEnabled && service.showsResetForecast
             case .quotaHistory:
-                return true
+                return service.supportsQuotaHistory
             case .tokenActivity:
                 return service.supportsTokenActivity
             }
@@ -351,6 +375,17 @@ struct ContentView: View {
         // Update countdowns and pace locally every minute without another API call.
         TimelineView(.periodic(from: Date(), by: 60)) { context in
             VStack(spacing: 16) {
+                if let balance = service.balanceSnapshot {
+                    DeepSeekBalanceSection(
+                        balance: balance,
+                        budget: settings.deepSeekBudget
+                    )
+
+                    if !visibleQuotaWindows.isEmpty {
+                        Divider()
+                    }
+                }
+
                 ForEach(visibleQuotaWindows) { window in
                     UsageWindowRow(
                         window: window,

@@ -9,6 +9,8 @@ import Foundation
 @MainActor
 final class UsageCoordinator: ObservableObject {
     let openCodeGo: OpenCodeGoUsageService
+    /// Prepaid DeepSeek credit; money-only unless the user configured a budget.
+    let deepSeek: DeepSeekUsageService
     /// Opt-in community reset estimate; it refreshes only when the popover opens
     /// or the user asks for a refresh, never on an idle timer.
     let resetForecast = ResetForecastService()
@@ -33,6 +35,10 @@ final class UsageCoordinator: ObservableObject {
             ? settings.usageAccountID
             : (stored.first?.id ?? StoredQuotaAccount.defaultCodexID)
         self.openCodeGo = OpenCodeGoUsageService(settings: settings, history: history)
+        self.deepSeek = DeepSeekUsageService(
+            settings: settings,
+            budget: Decimal(settings.deepSeekBudget)
+        )
 
         var services: [String: CodexUsageService] = [:]
         for account in stored where account.provider == .codex {
@@ -46,6 +52,9 @@ final class UsageCoordinator: ObservableObject {
         self.resetForecast.setEnabled(settings.resetForecastEnabled)
         settings.$resetForecastEnabled
             .sink { [weak self] enabled in self?.resetForecast.setEnabled(enabled) }
+            .store(in: &observations)
+        settings.$deepSeekBudget
+            .sink { [weak self] budget in self?.deepSeek.setBudget(Decimal(budget)) }
             .store(in: &observations)
 
         // Activate after StateObject construction completes on the main run loop.
@@ -69,6 +78,7 @@ final class UsageCoordinator: ObservableObject {
         switch account.provider {
         case .codex: return codexServices[accountID]
         case .openCodeGo: return openCodeGo
+        case .deepSeek: return deepSeek
         }
     }
 
@@ -219,6 +229,18 @@ final class UsageCoordinator: ObservableObject {
     var menuBarTitle: String { activeSource.menuBarTitle }
     var accountDescription: String { activeSource.accountDescription }
     var pushNotificationService: PushNotificationService { activeSource.pushNotificationService }
+    var balanceSnapshot: DeepSeekBalanceSnapshot? { activeSource.balanceSnapshot }
+    var supportsQuotaHistory: Bool { activeSource.supportsQuotaHistory }
+    var menuBarFallbackTitle: String? { activeSource.menuBarFallbackTitle }
+
+    /// The ring needs a percentage; a money-only provider draws text instead.
+    var showsMenuBarProgress: Bool { mostConstrainedRemainingPercent != nil }
+
+    /// Used by the switcher and the menu bar to label accounts that report money
+    /// instead of a percentage.
+    func fallbackTitle(for accountID: String) -> String? {
+        source(for: accountID)?.menuBarFallbackTitle
+    }
 
     /// The ring window the menu bar should draw for the account it shows.
     func menuBarWindow(for accountID: String) -> UsageWindow? {

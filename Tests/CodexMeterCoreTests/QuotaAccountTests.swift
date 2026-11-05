@@ -5,17 +5,26 @@ final class QuotaAccountTests: XCTestCase {
     func testSeededAccountsStartWithTheDefaultCodexLoginAndOpenCodeGo() {
         let seeded = StoredQuotaAccount.seededAccounts()
 
-        XCTAssertEqual(seeded.map(\.id), [StoredQuotaAccount.defaultCodexID, StoredQuotaAccount.openCodeGoID])
+        XCTAssertEqual(seeded.map(\.id), [
+            StoredQuotaAccount.defaultCodexID,
+            StoredQuotaAccount.deepSeekID,
+            StoredQuotaAccount.openCodeGoID
+        ])
         XCTAssertEqual(seeded.first?.provider, .codex)
         XCTAssertEqual(seeded.first?.codexHomeDirectory?.path, StoredQuotaAccount.defaultCodexHomeDirectory().path)
         XCTAssertFalse(seeded[0].isRemovable)
         XCTAssertFalse(seeded[1].isRemovable)
+        XCTAssertFalse(seeded[2].isRemovable)
     }
 
     func testNormalizingEmptyAccountsRestoresBothDefaults() {
         let normalized = StoredQuotaAccount.normalized([])
 
-        XCTAssertEqual(normalized.map(\.id), [StoredQuotaAccount.defaultCodexID, StoredQuotaAccount.openCodeGoID])
+        XCTAssertEqual(normalized.map(\.id), [
+            StoredQuotaAccount.defaultCodexID,
+            StoredQuotaAccount.deepSeekID,
+            StoredQuotaAccount.openCodeGoID
+        ])
     }
 
     func testNormalizingKeepsExtraCodexLoginsBetweenTheDefaults() {
@@ -30,7 +39,7 @@ final class QuotaAccountTests: XCTestCase {
 
         XCTAssertEqual(
             normalized.map(\.id),
-            [StoredQuotaAccount.defaultCodexID, "codex-work", StoredQuotaAccount.openCodeGoID]
+            [StoredQuotaAccount.defaultCodexID, "codex-work", StoredQuotaAccount.deepSeekID, StoredQuotaAccount.openCodeGoID]
         )
         XCTAssertTrue(normalized[1].isRemovable)
     }

@@ -12,6 +12,8 @@ struct AppSettingsView: View {
     @State private var selection: String? = "settings.category.general"
     @State private var showsClearConfirmation = false
     @State private var actionError: String?
+    @State private var deepSeekKeyDraft = ""
+    @State private var deepSeekKeyError: String?
 
     private let categories = [
         ("settings.category.general", "gearshape"),
@@ -113,6 +115,47 @@ struct AppSettingsView: View {
                     }
                 }
             }
+            Section(L10n.string("settings.deepseek.section")) {
+                SecureField(L10n.string("settings.deepseek.key_placeholder"), text: $deepSeekKeyDraft)
+                HStack {
+                    Button(L10n.string("settings.deepseek.save")) {
+                        saveDeepSeekKey()
+                    }
+                    .disabled(deepSeekKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    if service.deepSeek.hasStoredKey {
+                        Button(L10n.string("settings.deepseek.remove"), role: .destructive) {
+                            removeDeepSeekKey()
+                        }
+                    }
+                }
+
+                LabeledContent(L10n.string("settings.deepseek.status")) {
+                    Text(deepSeekKeyStatus)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack {
+                    Text(L10n.string("settings.deepseek.budget"))
+                    TextField(L10n.string("settings.deepseek.budget_placeholder"), value: Binding(
+                        get: { settings.deepSeekBudget },
+                        set: { settings.deepSeekBudget = max(0, $0) }
+                    ), format: .number)
+                    .frame(width: 110)
+                }
+
+                Text(L10n.string("settings.deepseek.help"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let deepSeekKeyError {
+                    Text(deepSeekKeyError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             Section(L10n.string("settings.reset_strategy.section")) {
                 Picker(L10n.string("settings.reset_strategy.section"), selection: $settings.resetStrategy) {
                     ForEach(ResetStrategy.allCases) { strategy in
@@ -150,6 +193,37 @@ struct AppSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var deepSeekKeyStatus: String {
+        let environment = service.deepSeek.hasEnvironmentKey
+        let stored = service.deepSeek.hasStoredKey
+        switch (environment, stored) {
+        case (true, _): return L10n.string("settings.deepseek.status_environment")
+        case (false, true): return L10n.string("settings.deepseek.status_keychain")
+        default: return L10n.string("settings.deepseek.status_missing")
+        }
+    }
+
+    private func saveDeepSeekKey() {
+        deepSeekKeyError = nil
+        do {
+            // Saving a key goes straight to the keychain; the draft text is the
+            // only place the full key is ever held in memory.
+            try service.deepSeek.saveKey(deepSeekKeyDraft)
+            deepSeekKeyDraft = ""
+        } catch {
+            deepSeekKeyError = L10n.string("settings.deepseek.save_failed")
+        }
+    }
+
+    private func removeDeepSeekKey() {
+        deepSeekKeyError = nil
+        do {
+            try service.deepSeek.removeKey()
+        } catch {
+            deepSeekKeyError = L10n.string("settings.deepseek.save_failed")
+        }
     }
 
     private func accountTitle(_ account: StoredQuotaAccount) -> String {

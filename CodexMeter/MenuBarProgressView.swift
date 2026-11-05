@@ -15,6 +15,9 @@ struct MenuBarProgressView: View {
     /// Replaces the configured caption so the default brand text can follow the
     /// active quota source without overwriting the user's edited caption.
     var captionOverride: String? = nil
+    /// False for a money-only provider: the item shows `title` without a ring or
+    /// a percentage that would have no meaning.
+    var showsProgress: Bool = true
 
     @State private var previousFlashSample: FlashSample?
     @State private var flashIntensity: CGFloat = 0
@@ -32,7 +35,8 @@ struct MenuBarProgressView: View {
         isStale: Bool,
         appearance: MenuBarAppearance,
         flashContext: String? = nil,
-        captionOverride: String? = nil
+        captionOverride: String? = nil,
+        showsProgress: Bool = true
     ) {
         self.remainingPercent = remainingPercent
         self.remainingTimePercent = remainingTimePercent
@@ -43,6 +47,7 @@ struct MenuBarProgressView: View {
         self.appearance = appearance
         self.flashContext = flashContext
         self.captionOverride = captionOverride
+        self.showsProgress = showsProgress
     }
 
     private struct FlashSample: Equatable {
@@ -117,6 +122,19 @@ struct MenuBarProgressView: View {
         let ring = CGFloat(appearance.ringDiameter)
         let text = CGFloat(appearance.textWidth)
         let bar = CGFloat(appearance.barWidth)
+        // A money amount needs its own width; the configured text width is sized
+        // for a three-digit percentage and would clip "¥1,234.00".
+        if !showsProgress {
+            let font = NSFont.monospacedDigitSystemFont(
+                ofSize: appearance.percentageFontSize,
+                weight: appearance.percentageFontWeight.nsWeight
+            )
+            let measured = (title as NSString).size(withAttributes: [.font: font]).width
+            return NSSize(
+                width: ceil(max(measured, 22) + padding + staleWidth),
+                height: CGFloat(appearance.itemHeight)
+            )
+        }
         let contentWidth: CGFloat
 
         switch style {
@@ -152,6 +170,17 @@ struct MenuBarProgressView: View {
             var cursorX = CGFloat(appearance.horizontalPadding) + leadingStaleWidth
             let centerY = rect.midY
 
+            if !showsProgress {
+                renderer.drawSingleLineTitle(
+                    in: NSRect(
+                        x: cursorX,
+                        y: 0,
+                        width: rect.width - cursorX - CGFloat(appearance.horizontalPadding),
+                        height: rect.height
+                    ),
+                    appearance: appearance
+                )
+            } else {
             switch style {
             case .progressAndPercentage:
                 let diameter = CGFloat(appearance.ringDiameter)
@@ -280,6 +309,7 @@ struct MenuBarProgressView: View {
                     ),
                     appearance: appearance
                 )
+            }
             }
 
             if isStale, appearance.showsStaleIndicator {
@@ -527,6 +557,7 @@ struct MenuBarProgressView: View {
     }
 
     private var accessibilityText: String {
+        guard showsProgress else { return title }
         guard let remainingPercent else { return L10n.string("menubar.unavailable") }
         let quota = L10n.format("menubar.remaining_format", remainingPercent)
         var components = [quota]

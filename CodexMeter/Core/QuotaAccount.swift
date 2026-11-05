@@ -15,6 +15,7 @@ nonisolated struct StoredQuotaAccount: Codable, Identifiable, Hashable, Sendable
 
     static let defaultCodexID = "codex-default"
     static let openCodeGoID = "opencode-go"
+    static let deepSeekID = "deepseek"
 
     static func defaultCodexHomeDirectory() -> URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -34,10 +35,16 @@ nonisolated struct StoredQuotaAccount: Codable, Identifiable, Hashable, Sendable
         StoredQuotaAccount(id: openCodeGoID, provider: .openCodeGo, displayName: "OpenCode Go", codexHomeDirectoryPath: nil)
     }
 
+    /// One implicit account: the balance belongs to the single API key the app
+    /// holds, so there is never a second DeepSeek row to add or remove.
+    static func deepSeekAccount() -> StoredQuotaAccount {
+        StoredQuotaAccount(id: deepSeekID, provider: .deepSeek, displayName: "DeepSeek", codexHomeDirectoryPath: nil)
+    }
+
     /// Accounts that always exist so the app has something to show before the
     /// user adds anything.
     static func seededAccounts() -> [StoredQuotaAccount] {
-        [defaultAccount(), openCodeGoAccount()]
+        [defaultAccount(), deepSeekAccount(), openCodeGoAccount()]
     }
 
     /// Keeps persisted accounts usable: the two provider defaults always exist,
@@ -52,9 +59,10 @@ nonisolated struct StoredQuotaAccount: Codable, Identifiable, Hashable, Sendable
         if !result.contains(where: { $0.id == defaultCodexID }) {
             result.insert(.defaultAccount(), at: 0)
         }
-        // The provider default stays the last tab so extra Codex logins, the
+        // The provider defaults stay the last tabs so extra Codex logins, the
         // reason a user adds accounts at all, sit next to the default login.
-        result.removeAll { $0.id == openCodeGoID }
+        result.removeAll { $0.id == deepSeekID || $0.id == openCodeGoID }
+        result.append(.deepSeekAccount())
         result.append(.openCodeGoAccount())
         return result
     }
@@ -71,7 +79,7 @@ nonisolated struct StoredQuotaAccount: Codable, Identifiable, Hashable, Sendable
         switch provider {
         case .codex:
             return id != Self.defaultCodexID
-        case .openCodeGo:
+        case .openCodeGo, .deepSeek:
             return false
         }
     }

@@ -60,7 +60,8 @@ struct CodexMeterApp: App {
                 flashContext: settings.developerPreviewEnabled ? nil : usageService.historyAccountKey.map {
                     $0 + ":" + (usageService.menuBarWindow(for: usageService.accountID)?.historyID ?? "")
                 },
-                captionOverride: usageService.menuBarCaption
+                captionOverride: usageService.menuBarCaption,
+                showsProgress: usageService.showsMenuBarProgress
             )
         }
         .menuBarExtraStyle(.window)
@@ -107,6 +108,7 @@ struct CodexMeterApp: App {
             remainingPercent: window?.remainingPercent,
             remainingTimePercent: window?.remainingTimePercent(at: Date()),
             title: window.map { "\($0.remainingPercent)%" }
+                ?? usageService.menuBarFallbackTitle
                 ?? (usageService.isLoading ? "…" : "--"),
             attentionLevel: window?.attentionLevel(at: Date()) ?? .normal,
             isStale: usageService.isStale

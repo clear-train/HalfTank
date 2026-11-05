@@ -94,6 +94,10 @@ unchanged; only the app name and the new sections differ.
   before it expires, and it follows the reset strategy you pick: **reach the
   reset** saves quota for the official refill, **use it all** refills as soon as
   a window runs dry. This view is read-only and cannot redeem a reset.
+- Shows the DeepSeek prepaid balance as money, with an optional budget that
+  turns it into a ring, a menu bar percentage, and the same pace hints. The key
+  comes from `DEEPSEEK_API_KEY` or the login keychain and never leaves the
+  machine.
 - Supports OpenCode Go as a second quota source. It shows the 5-hour, weekly,
   and monthly Go meters with the same rings, pace hints, reset countdowns, and
   quota history, and keeps OpenCode's history in its own local partition.
@@ -248,6 +252,30 @@ yet. See the [OpenCode Go documentation](https://opencode.ai/docs/go).
 Every account keeps polling, so the switcher shows live percentages for the
 accounts you are not looking at. Only the account on screen owns the visible
 history partition; the others keep recording under their own account key.
+
+### DeepSeek balance
+
+DeepSeek's platform does not publish rolling quota windows; the only number it
+reports is the prepaid balance. HalfTank therefore leads with money: the popover
+shows the total, the topped-up and granted parts, when it was read, and whether
+the platform currently considers the balance usable.
+
+The balance is read from `GET https://api.deepseek.com/user/balance` with your
+own API key. The key is looked up in this order:
+
+1. `DEEPSEEK_API_KEY` in the environment the app was launched from;
+2. the login keychain entry that **Settings → General → DeepSeek balance** writes.
+
+Nothing else is requested, the key is never written to preferences, and no
+request is made until a key exists. A rejected key is reported as such instead
+of being retried in a loop.
+
+Because a balance has no percentage of its own, the rings are opt-in: enter how
+much money a full ring represents (for example `100`) and the ring, the menu bar
+percentage, and the pace hints start working. Leave it empty to keep the
+provider money-only; the menu bar then shows the amount instead of an empty
+ring. The balance has no reset cycle, so reset-related sections never appear for
+this provider, and it keeps no history in this version.
 
 ### Multiple Codex accounts
 
@@ -494,6 +522,9 @@ verification checklist, and planned developer customization options.
   launches for that folder owns them, exactly as it does for the default login.
   Account tabs, menu bar ring choices, and history partitions are keyed by a
   local account identifier, and exports never include the folder path.
+- For DeepSeek, the only request is `GET /user/balance` with the API key you
+  configured; the key lives in `DEEPSEEK_API_KEY` or the login keychain, never in
+  preferences or history, and the response is reduced to the amounts.
 - For OpenCode Go, HalfTank reads OpenCode's own credential read-only and
   never writes to `opencode.db`, never stores the access or refresh token, never
   logs the workspace email, and never refreshes a token itself. Only the JSON-RPC
@@ -512,7 +543,9 @@ Menu Bar & Popover, Notifications, History & Backup, and Developer, followed by 
 **General → Accounts** lists every watched account, adds a Codex login by
 choosing its `CODEX_HOME`, and removes extra ones. **General → Quota source**
 picks the tab shown first and, for OpenCode Go, the connection between the
-official CLI and the direct API. **General → Reset estimate** opts into the
+official CLI and the direct API. **General → DeepSeek balance** saves an API key into the login keychain, shows
+which source the key comes from, and sets the budget a full ring represents.
+**General → Reset estimate** opts into the
 third-party reset probability described above. **Menu Bar & Popover → Ring source** chooses the
 quota window drawn in the menu bar; the choice is remembered per account, and
 every account keeps refreshing while one is shown.
@@ -592,6 +625,8 @@ Backups larger than 512 MiB are currently unsupported.
   expose. Per-model Go budgets, extra-usage spending, and token activity are not
   shown yet, and the OpenCode endpoints behind `experimental.usage.limits` may
   change between CLI releases.
+- The DeepSeek balance has no history chart and no low-balance notification yet,
+  and it needs a budget before a percentage exists at all.
 - The reset estimate is a community prediction built from public resets and
   announcements. It can be wrong, its undocumented endpoint may change or
   disappear, and it is never treated as an OpenAI commitment.

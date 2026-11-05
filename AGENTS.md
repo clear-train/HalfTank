@@ -114,6 +114,18 @@ has changed.
   and pace hints but is flagged `isDurationDerived` so `historyID` stays the
   provider-owned identifier instead of a duration bucket that would change with
   every 28- to 31-day month.
+- `Core/DeepSeekBalanceModels.swift`, `Core/DeepSeekClient.swift`, and
+  `Core/DeepSeekCredentialStore.swift` implement the DeepSeek balance source. The
+  platform reports prepaid money instead of rolling windows, so
+  `DeepSeekBalanceWindow` produces a `UsageWindow` only when the user sets a
+  budget; without one the provider stays money-only and the menu bar draws the
+  amount as text (`showsProgress == false`) rather than an empty ring. The key is
+  resolved from `DEEPSEEK_API_KEY` first and the login keychain second, is never
+  written to preferences, and no request is attempted without one. Credential
+  access is injected as closures, not a protocol, because the app target builds
+  with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and a protocol would inherit
+  that isolation. A rejected key must surface as an authorization error, not a
+  silent empty balance.
 - `UsageSource.swift` and `UsageCoordinator.swift` keep the UI account-neutral.
   Views observe the coordinator, which forwards to the source the popover is
   showing. Every account keeps its own refresh timer and keeps recording history
@@ -125,9 +137,10 @@ has changed.
   name, and for Codex the `CODEX_HOME` folder that holds its `auth.json`. Several
   Codex accounts coexist because each one is a separate home directory and thus
   a separate `codex app-server` child with its own credentials. The default
-  `~/.codex` account and OpenCode Go are not removable so the popover always has
-  a source. `StoredQuotaAccount.normalized` keeps the default Codex account first,
-  OpenCode Go last, and drops duplicate identifiers, because one identifier owns
+  `~/.codex` account, DeepSeek, and OpenCode Go are not removable so the popover
+  always has a source. `StoredQuotaAccount.normalized` keeps the default Codex
+  account first and OpenCode Go last (DeepSeek sits in between), and drops
+  duplicate identifiers, because one identifier owns
   one live service and one history partition. A Codex home without `auth.json`
   must report a sign-in message instead of spawning a child that would exit
   immediately on every retry.
@@ -143,6 +156,11 @@ has changed.
   glass capsule with an animated sliding highlight while three or fewer sources
   exist, collapsing to a checkmarked menu past that so labels never truncate.
   Use native Liquid Glass on macOS 26 and a material plus hairline edge earlier.
+- `DeepSeekUsageService.swift` mirrors the same quota surface for the balance
+  source: no quota history (`supportsQuotaHistory == false`), no token activity,
+  no banked resets, no reset sections, and a no-op `setHistoryViewActive`. It
+  polls far less often than the quota providers because a balance moves only
+  when the account is charged or spent down.
 - `OpenCodeGoUsageService.swift` mirrors the quota-facing surface of
   `CodexUsageService` and records quota history under the OpenCode workspace key.
   Token activity and banked resets stay unavailable for providers that do not
@@ -641,6 +659,12 @@ Codex App Server.
   pace".
 
 ### Candidate follow-ups
+
+- [x] Add the DeepSeek platform balance as a `UsageSource`: `GET /user/balance`
+  with a key from `DEEPSEEK_API_KEY` or the login keychain, money-first display,
+  an optional budget that turns the balance into a ring, menu bar percentage and
+  pace hints, and a text-only menu bar when no budget is set. Later work: balance
+  history, a low-balance notification, and per-line currency selection.
 
 - [x] Add the opt-in community reset estimate: an hourly-throttled anonymous read
   of `pingreset.com/api/status`, a popover section with the probability,

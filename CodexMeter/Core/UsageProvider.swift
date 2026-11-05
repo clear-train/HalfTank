@@ -8,6 +8,8 @@ import Foundation
 nonisolated enum UsageProvider: String, CaseIterable, Codable, Identifiable, Sendable {
     case codex
     case openCodeGo
+    /// Prepaid platform credit, read from the DeepSeek balance endpoint.
+    case deepSeek
 
     var id: String { rawValue }
 
@@ -25,6 +27,8 @@ nonisolated enum UsageProvider: String, CaseIterable, Codable, Identifiable, Sen
             self = .codex
         case "opencodego":
             self = .openCodeGo
+        case "deepseek":
+            self = .deepSeek
         default:
             throw DecodingError.dataCorruptedError(
                 in: try decoder.singleValueContainer(),
@@ -38,6 +42,7 @@ nonisolated enum UsageProvider: String, CaseIterable, Codable, Identifiable, Sen
         switch self {
         case .codex: "codex"
         case .openCodeGo: "opencode-go"
+        case .deepSeek: "deepseek"
         }
     }
 

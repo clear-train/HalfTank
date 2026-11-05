@@ -707,6 +707,10 @@ private struct ResetCreditsSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            ForEach(outlooks(at: date)) { outlook in
+                outlookRow(outlook)
+            }
+
             ForEach(usableCredits) { credit in
                 resetCreditDetail(credit, at: date)
             }
@@ -739,12 +743,15 @@ private struct ResetCreditsSection: View {
             return L10n.format(
                 "reset_credits.advice.use_now_format",
                 advice.windowName ?? L10n.string("reset_credits.title"),
+                advice.windowPercent.map { "\($0)%" } ?? "-",
                 advice.exhaustionAt.map(L10n.formattedDateTime) ?? "-"
             )
-        case .useAtFloor:
+        case .useHeadroom:
             return L10n.format(
-                "reset_credits.advice.floor_format",
-                advice.windowName ?? L10n.string("reset_credits.title")
+                "reset_credits.advice.headroom_format",
+                advice.windowName ?? L10n.string("reset_credits.title"),
+                advice.windowPercent.map { "\($0)%" } ?? "-",
+                advice.expectedResetAt.map(L10n.formattedDateTime) ?? "-"
             )
         case .waitForAutomaticReset:
             let percent = Int(((advice.probability ?? 0) * 100).rounded())
@@ -756,33 +763,79 @@ private struct ResetCreditsSection: View {
         case .useBeforeExpiry:
             return L10n.format(
                 "reset_credits.advice.expiry_format",
-                advice.expiresAt.map(L10n.formattedDateTime) ?? "-"
+                advice.expiresAt.map(L10n.formattedDateTime) ?? "-",
+                advice.windowName ?? L10n.string("reset_credits.title"),
+                advice.windowPercent.map { "\($0)%" } ?? "-"
             )
         case .hold:
-            // A hold only helps when it says when holding stops being right, so the
-            // sentence carries the projected floor or the next automatic refill.
-            if let at = advice.recommendedAt.map(L10n.formattedDateTime) {
-                // A projected floor reads differently from a plain automatic refill:
-                // only the first one predicts quota reaching its low mark.
-                if strategy == .maximize,
-                   let window = advice.windowName,
-                   advice.recommendedAt != advice.expectedResetAt {
-                    return L10n.format("reset_credits.advice.hold_maximize_format", window, at)
-                }
-                return L10n.format("reset_credits.advice.hold_format", at)
+            // A hold only helps when it names the window it is about and when that
+            // window refills, because "not yet" alone cannot be acted on.
+            if let window = advice.windowName,
+               let percent = advice.windowPercent,
+               let reset = advice.expectedResetAt.map(L10n.formattedDateTime) {
+                return L10n.format(
+                    "reset_credits.advice.hold_window_format",
+                    window,
+                    "\(percent)%",
+                    reset
+                )
             }
-            return L10n.string(
-                strategy == .maximize
-                    ? "reset_credits.advice.hold_maximize"
-                    : "reset_credits.advice.hold"
-            )
+            return L10n.string("reset_credits.advice.hold")
         }
+    }
+
+    @MainActor
+    private func outlooks(at date: Date) -> [QuotaWindowOutlook] {
+        QuotaOutlook.outlooks(windows: windows, samples: samples, now: date)
+    }
+
+    private func outlookRow(_ outlook: QuotaWindowOutlook) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(outlook.window.name)
+                .font(.caption)
+            Text("\(outlook.window.remainingPercent)%")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            Spacer(minLength: 8)
+
+            Text(outlookText(outlook))
+                .font(.caption2)
+                .foregroundStyle(outlookTint(outlook))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func outlookText(_ outlook: QuotaWindowOutlook) -> String {
+        switch outlook.coverage {
+        case let .runsOut(date):
+            return L10n.format(
+                "reset_credits.outlook.runs_out_format",
+                L10n.formattedDateTime(date)
+            )
+        case .lastsUntilReset:
+            guard let reset = outlook.window.resetsAt else {
+                return L10n.string("reset_credits.outlook.lasts_generic")
+            }
+            return L10n.format(
+                "reset_credits.outlook.lasts_format",
+                L10n.formattedDateTime(reset)
+            )
+        case let .idle(since):
+            return L10n.format("reset_credits.outlook.idle_format", L10n.formattedTime(since))
+        case .unknown:
+            return L10n.string("reset_credits.outlook.unknown")
+        }
+    }
+
+    private func outlookTint(_ outlook: QuotaWindowOutlook) -> Color {
+        outlook.coverage.exhaustionDate == nil ? .secondary : .orange
     }
 
     private func adviceSymbol(_ advice: ResetCreditAdvisor.Recommendation) -> String {
         switch advice.action {
         case .useNow: return "exclamationmark.circle"
-        case .useAtFloor: return "bolt.circle"
+        case .useHeadroom: return "bolt.circle"
         case .waitForAutomaticReset: return "hourglass"
         case .useBeforeExpiry: return "clock.badge.exclamationmark"
         case .hold: return "checkmark.circle"
@@ -791,7 +844,7 @@ private struct ResetCreditsSection: View {
 
     private func adviceTint(_ advice: ResetCreditAdvisor.Recommendation) -> Color {
         switch advice.action {
-        case .useNow, .useAtFloor, .useBeforeExpiry: return .orange
+        case .useNow, .useHeadroom, .useBeforeExpiry: return .orange
         case .waitForAutomaticReset, .hold: return .secondary
         }
     }

@@ -3,6 +3,7 @@ import XCTest
 
 final class ResetCreditAdvisorTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    private let week = 7 * 24 * 60
 
     func testNoCreditsMeansNoAdvice() {
         XCTAssertNil(ResetCreditAdvisor.recommend(
@@ -21,41 +22,67 @@ final class ResetCreditAdvisorTests: XCTestCase {
         ))
     }
 
-    func testCreditIsSpentNowWhenQuotaCannotWaitForItsReset() {
-        let target = window(remaining: 40, resetsAt: now.addingTimeInterval(4 * 3600))
-        let summary = summary(expiresAt: now.addingTimeInterval(10 * 24 * 3600))
+    func testLongWindowThatCannotReachItsResetIsSpentNow() {
+        let target = window(
+            remaining: 40,
+            resetsAt: now.addingTimeInterval(4 * 3600),
+            durationMins: week
+        )
 
         let recommendation = ResetCreditAdvisor.recommend(
             windows: [target],
             samples: drainingSamples(for: target, from: 60, per: 5, stepMinutes: 10, count: 5),
-            summary: summary,
+            summary: summary(expiresAt: now.addingTimeInterval(10 * 24 * 3600)),
             forecast: nil,
             now: now
         )
 
         XCTAssertEqual(recommendation?.action, .useNow)
         XCTAssertEqual(recommendation?.windowName, target.name)
+        XCTAssertEqual(recommendation?.windowPercent, 40)
         XCTAssertNotNil(recommendation?.exhaustionAt)
     }
 
-    func testCreditIsHeldWhenTheOfficialResetArrivesFirst() {
-        // Fifty points left burning at one point per minute still outlives a reset
-        // that is only ten minutes away, so the window refills on its own.
-        let target = window(remaining: 50, resetsAt: now.addingTimeInterval(10 * 60))
+    func testShortWindowNeverTriggersACreditSuggestion() {
+        // A five-hour window refills on its own; burning a banked reset for it
+        // would be waste even when it is nearly empty.
+        let target = window(remaining: 3, resetsAt: now.addingTimeInterval(3 * 3600), durationMins: 5 * 60)
 
         let recommendation = ResetCreditAdvisor.recommend(
             windows: [target],
-            samples: drainingSamples(for: target, from: 60, per: 5, stepMinutes: 5, count: 5),
-            summary: summary(expiresAt: now.addingTimeInterval(30 * 24 * 3600)),
+            samples: drainingSamples(for: target, from: 20, per: 5, stepMinutes: 5, count: 4),
+            summary: summary(expiresAt: now.addingTimeInterval(10 * 24 * 3600)),
+            forecast: nil,
+            now: now,
+            strategy: .maximize
+        )
+
+        XCTAssertEqual(recommendation?.action, .hold)
+        XCTAssertNil(recommendation?.windowName)
+    }
+
+    func testHoldNamesTheLongWindowAndWhenItRefills() {
+        let target = window(
+            remaining: 95,
+            resetsAt: now.addingTimeInterval(5 * 24 * 3600),
+            durationMins: week
+        )
+
+        let recommendation = ResetCreditAdvisor.recommend(
+            windows: [target],
+            samples: [],
+            summary: summary(expiresAt: now.addingTimeInterval(20 * 24 * 3600)),
             forecast: nil,
             now: now
         )
 
-        XCTAssertNotEqual(recommendation?.action, .useNow)
+        XCTAssertEqual(recommendation?.action, .hold)
+        XCTAssertEqual(recommendation?.windowName, target.name)
+        XCTAssertEqual(recommendation?.windowPercent, 95)
+        XCTAssertEqual(recommendation?.recommendedAt, target.resetsAt)
     }
 
     func testAdviceWaitsForALikelyAutomaticReset() {
-        let summary = summary(expiresAt: now.addingTimeInterval(10 * 24 * 3600))
         let forecast = ResetForecast(
             didResetToday: false,
             lastResetAt: now.addingTimeInterval(-24 * 3600),
@@ -67,9 +94,9 @@ final class ResetCreditAdvisorTests: XCTestCase {
         )
 
         let recommendation = ResetCreditAdvisor.recommend(
-            windows: [window(remaining: 80, resetsAt: now.addingTimeInterval(6 * 24 * 3600))],
+            windows: [window(remaining: 80, resetsAt: now.addingTimeInterval(6 * 24 * 3600), durationMins: week)],
             samples: [],
-            summary: summary,
+            summary: summary(expiresAt: now.addingTimeInterval(10 * 24 * 3600)),
             forecast: forecast,
             now: now
         )
@@ -79,7 +106,6 @@ final class ResetCreditAdvisorTests: XCTestCase {
     }
 
     func testAdviceDoesNotWaitWhenTheCreditExpiresBeforeTheExpectedReset() {
-        let summary = summary(expiresAt: now.addingTimeInterval(6 * 3600))
         let forecast = ResetForecast(
             didResetToday: false,
             lastResetAt: now.addingTimeInterval(-24 * 3600),
@@ -91,9 +117,9 @@ final class ResetCreditAdvisorTests: XCTestCase {
         )
 
         let recommendation = ResetCreditAdvisor.recommend(
-            windows: [window(remaining: 90, resetsAt: now.addingTimeInterval(6 * 24 * 3600))],
+            windows: [window(remaining: 90, resetsAt: now.addingTimeInterval(6 * 24 * 3600), durationMins: week)],
             samples: [],
-            summary: summary,
+            summary: summary(expiresAt: now.addingTimeInterval(6 * 3600)),
             forecast: forecast,
             now: now
         )
@@ -101,37 +127,20 @@ final class ResetCreditAdvisorTests: XCTestCase {
         XCTAssertNotEqual(recommendation?.action, .waitForAutomaticReset)
     }
 
-    func testAdviceSpendsAnExpiringCreditWhileQuotaBurnsFast() {
-        // Eighty percent used with most of the window left is above the ideal pace.
-        let target = window(remaining: 20, resetsAt: now.addingTimeInterval(4 * 24 * 3600), durationMins: 7 * 24 * 60)
-        let summary = summary(expiresAt: now.addingTimeInterval(12 * 3600))
+    func testExpiringCreditIsSpentWhileALongWindowIsDrawnDown() {
+        let target = window(remaining: 40, resetsAt: now.addingTimeInterval(4 * 24 * 3600), durationMins: week)
 
         let recommendation = ResetCreditAdvisor.recommend(
             windows: [target],
             samples: [],
-            summary: summary,
+            summary: summary(expiresAt: now.addingTimeInterval(12 * 3600)),
             forecast: nil,
             now: now
         )
 
         XCTAssertEqual(recommendation?.action, .useBeforeExpiry)
         XCTAssertNotNil(recommendation?.expiresAt)
-    }
-
-    func testAdviceHoldsWhenNothingIsUrgent() {
-        let target = window(remaining: 95, resetsAt: now.addingTimeInterval(5 * 24 * 3600), durationMins: 7 * 24 * 60)
-        let summary = summary(expiresAt: now.addingTimeInterval(20 * 24 * 3600))
-
-        let recommendation = ResetCreditAdvisor.recommend(
-            windows: [target],
-            samples: [],
-            summary: summary,
-            forecast: nil,
-            now: now
-        )
-
-        XCTAssertEqual(recommendation?.action, .hold)
-        XCTAssertNotNil(recommendation?.expiresAt)
+        XCTAssertEqual(recommendation?.windowName, target.name)
     }
 
     func testExpiredCreditsProduceNoAdvice() {
@@ -151,8 +160,8 @@ final class ResetCreditAdvisorTests: XCTestCase {
 
     // MARK: - Strategies
 
-    func testMaximizeUsesACreditWhenAWindowIsAtTheFloor() {
-        let target = window(remaining: 3, resetsAt: now.addingTimeInterval(2 * 3600))
+    func testMaximizeRefillsALongWindowThatIsAlreadyLow() {
+        let target = window(remaining: 15, resetsAt: now.addingTimeInterval(2 * 24 * 3600), durationMins: week)
 
         let recommendation = ResetCreditAdvisor.recommend(
             windows: [target],
@@ -163,12 +172,13 @@ final class ResetCreditAdvisorTests: XCTestCase {
             strategy: .maximize
         )
 
-        XCTAssertEqual(recommendation?.action, .useAtFloor)
+        XCTAssertEqual(recommendation?.action, .useHeadroom)
         XCTAssertEqual(recommendation?.windowName, target.name)
+        XCTAssertEqual(recommendation?.windowPercent, 15)
     }
 
-    func testBridgeHoldsWhenAWindowIsAtTheFloorButItsResetIsStillAhead() {
-        let target = window(remaining: 3, resetsAt: now.addingTimeInterval(2 * 3600))
+    func testBridgeHoldsALowLongWindowThatStillLasts() {
+        let target = window(remaining: 15, resetsAt: now.addingTimeInterval(2 * 24 * 3600), durationMins: week)
 
         let recommendation = ResetCreditAdvisor.recommend(
             windows: [target],
@@ -180,14 +190,11 @@ final class ResetCreditAdvisorTests: XCTestCase {
         )
 
         XCTAssertEqual(recommendation?.action, .hold)
+        XCTAssertEqual(recommendation?.windowName, target.name)
     }
 
-    func testMaximizeHoldsWhileQuotaStillHasRoomToBurn() {
-        let target = window(
-            remaining: 90,
-            resetsAt: now.addingTimeInterval(5 * 24 * 3600),
-            durationMins: 7 * 24 * 60
-        )
+    func testMaximizeHoldsWhileTheLongWindowStillHasRoom() {
+        let target = window(remaining: 90, resetsAt: now.addingTimeInterval(5 * 24 * 3600), durationMins: week)
 
         let recommendation = ResetCreditAdvisor.recommend(
             windows: [target],
@@ -196,75 +203,41 @@ final class ResetCreditAdvisorTests: XCTestCase {
             forecast: nil,
             now: now,
             strategy: .maximize
-        )
-
-        XCTAssertEqual(recommendation?.action, .hold)
-    }
-
-    func testMaximizeSpendsAnExpiringCreditWhileQuotaIsStillBurnable() {
-        let target = window(
-            remaining: 50,
-            resetsAt: now.addingTimeInterval(5 * 24 * 3600),
-            durationMins: 7 * 24 * 60
-        )
-
-        let recommendation = ResetCreditAdvisor.recommend(
-            windows: [target],
-            samples: [],
-            summary: summary(expiresAt: now.addingTimeInterval(12 * 3600)),
-            forecast: nil,
-            now: now,
-            strategy: .maximize
-        )
-
-        XCTAssertEqual(recommendation?.action, .useBeforeExpiry)
-    }
-
-    // MARK: - Recommended moment
-
-    func testBridgeHoldPointsAtTheNextAutomaticReset() {
-        // Ten minutes before the official refill, so waiting is right; the wait is
-        // only actionable with the moment it ends.
-        let target = window(remaining: 50, resetsAt: now.addingTimeInterval(10 * 60))
-
-        let recommendation = ResetCreditAdvisor.recommend(
-            windows: [target],
-            samples: drainingSamples(for: target, from: 60, per: 5, stepMinutes: 5, count: 5),
-            summary: summary(expiresAt: now.addingTimeInterval(30 * 24 * 3600)),
-            forecast: nil,
-            now: now
         )
 
         XCTAssertEqual(recommendation?.action, .hold)
         XCTAssertEqual(recommendation?.recommendedAt, target.resetsAt)
     }
 
-    func testMaximizeHoldProjectsWhenTheFloorArrives() throws {
-        // One point per hour leaves the tightest window nine points above the floor,
-        // so the next credit becomes worth spending about 86 hours from now.
-        let target = window(
-            remaining: 91,
-            resetsAt: now.addingTimeInterval(120 * 3600),
-            durationMins: 7 * 24 * 60
+    // MARK: - Mixed windows
+
+    func testShortWindowIsIgnoredWhenALongWindowDecidesTheAdvice() {
+        // The five-hour window is nearly empty, but the weekly window is healthy,
+        // so the answer is to keep the credit.
+        let fiveHour = window(
+            remaining: 2,
+            resetsAt: now.addingTimeInterval(2 * 3600),
+            durationMins: 5 * 60,
+            id: "five"
+        )
+        let weekly = window(
+            remaining: 70,
+            resetsAt: now.addingTimeInterval(5 * 24 * 3600),
+            durationMins: week,
+            id: "weekly"
         )
 
         let recommendation = ResetCreditAdvisor.recommend(
-            windows: [target],
-            samples: drainingSamples(for: target, from: 100, per: 1, stepMinutes: 60, count: 10),
+            windows: [fiveHour, weekly],
+            samples: [],
             summary: summary(expiresAt: now.addingTimeInterval(20 * 24 * 3600)),
             forecast: nil,
             now: now,
-            strategy: .maximize
+            strategy: .bridge
         )
 
         XCTAssertEqual(recommendation?.action, .hold)
-        XCTAssertEqual(recommendation?.windowName, target.name)
-        let recommendedAt = try XCTUnwrap(recommendation?.recommendedAt)
-        XCTAssertEqual(
-            recommendedAt.timeIntervalSince(now) / 3600,
-            86,
-            accuracy: 3
-        )
+        XCTAssertEqual(recommendation?.windowName, weekly.name)
     }
 
     // MARK: - Fixtures
@@ -272,11 +245,12 @@ final class ResetCreditAdvisorTests: XCTestCase {
     private func window(
         remaining: Int,
         resetsAt: Date? = nil,
-        durationMins: Int = 300
+        durationMins: Int = 300,
+        id: String = "codex-primary"
     ) -> UsageWindow {
         UsageWindow(
-            id: "codex-primary",
-            name: "5 hours",
+            id: id,
+            name: "Window",
             usedPercent: 100 - remaining,
             windowDurationMins: durationMins,
             resetsAt: resetsAt ?? now.addingTimeInterval(2 * 3600)

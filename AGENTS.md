@@ -193,22 +193,32 @@ has changed.
   when a window cannot last, `maximize` treats unused quota as wasted and refills
   as soon as a window is dry. It persists in `usage.resetStrategy` and defaults
   to `bridge`.
-- `Core/ResetCreditAdvisor.swift` turns banked resets, the active-time exhaustion
-  estimate, and the community reset estimate into the one-line suggestion shown
-  with the banked resets. It takes the selected `ResetStrategy`. For `bridge`
-  keep its rule order: spend now when a window is projected to run out before
-  its own reset, hold when a likely automatic reset is expected before the credit
-  expires, spend before the deadline when the credit expires soon and quota is
-  already above the ideal pace, otherwise hold. For `maximize`: refill when a
-  window has five percent or less left (`useAtFloor`), then the same projected
-  exhaustion rule, then spend a credit that expires within the warning window
-  while some block still has at least thirty percent of its quota to burn.
-  Every recommendation carries `recommendedAt`: the moment to act, the projected
-  time the tightest window reaches `floorPercent` (5), or the next automatic
-  refill, so the one-liner always names a time instead of saying "not yet".
-  Keep the thresholds as default arguments (6 hours of risk, 60% probability, a
-  48-hour expiry warning), keep the advice read-only so it never spends a reset,
-  and return nothing when no usable credit exists.
+- `Core/QuotaOutlook.swift` answers, per window, whether the current burn rate
+  reaches that window's own reset: `runsOut(date)`, `lastsUntilReset`,
+  `idle(since:)` when the last hour shows no consumption at all, or `unknown`
+  without enough history. The popover renders one row per window from it, so the
+  five-hour and weekly limits stop sharing a single blended sentence. Only
+  windows a day or longer count as long (`longWindowMinimumMinutes`), because a
+  five-hour window refills several times a day and a shortfall there is routine.
+  It reads the estimate with `allowingPastReset: true`; the displayed history
+  estimate keeps suppressing projections at or after the official reset, while
+  the outlook needs the unclamped moment to compare the two.
+- `Core/ResetCreditAdvisor.swift` turns banked resets, the per-window outlooks,
+  and the community reset estimate into the one-line voucher suggestion shown
+  with the banked resets. Only long windows drive it; a credit spent to cover a
+  five-hour window is waste. Keep the rule order: spend now when a long window is
+  projected to run dry before its own reset (`useNow`), hold when a likely
+  automatic reset is expected before the credit expires, and for `maximize` also
+  refill a long window already at or below twenty percent (`useHeadroom`). Then
+  spend a credit expiring inside the warning window while a long window is at or
+  below fifty percent, otherwise hold. `bridge` therefore only reacts to a real
+  shortfall, while `maximize` also protects headroom.
+  Every recommendation carries `windowName`, `windowPercent`, and
+  `recommendedAt`, so the one-liner names the window, its remaining quota, and
+  the moment it points at instead of saying "not yet". Keep the thresholds as
+  default arguments (60% probability, a 48-hour expiry warning), keep the advice
+  read-only so it never spends a reset, and return nothing when no usable credit
+  exists.
 - `Core/AppIdentity.swift` holds the product identity: display name, bundle
   identifier (`com.github.cleartrain.HalfTank`), the `HalfTank` Application
   Support directory, the Keychain service name, and the repository URL. Keep new

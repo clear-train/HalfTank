@@ -1,25 +1,25 @@
 import Foundation
 
-/// Turns banked resets, projected exhaustion, and the community reset estimate
-/// into one piece of advice.
+/// Turns banked resets, per-window outlooks, and the community reset estimate
+/// into one line of advice.
 ///
-/// The rules stay pure and ordered so the result can be tested and explained:
-/// spend a credit when the window cannot wait for its own reset, hold it when a
-/// community-predicted reset is likely to arrive first, and spend it soon when it
-/// would otherwise expire while quota is already burning fast.
+/// Only windows at least a day long drive the advice. A five-hour window refills
+/// several times a day, so spending a scarce banked reset to cover it wastes the
+/// credit on capacity the account is about to receive anyway; a weekly or monthly
+/// window that cannot reach its own reset is the case a credit really fixes.
 ///
-/// Every recommendation carries the moment it points at, because "hold" is only
-/// useful when the user can see when holding stops being the right answer.
+/// Every recommendation names the moment it points at, because advice without a
+/// time cannot be acted on.
 struct ResetCreditAdvisor {
     struct Recommendation: Equatable, Sendable {
         enum Action: Equatable, Sendable {
-            /// Quota is projected to run out before its own reset arrives.
+            /// A long window is projected to run out before its own reset.
             case useNow
-            /// A window has already run dry, so a credit keeps the work going.
-            case useAtFloor
+            /// Maximising: a long window is already low, so refill to keep working.
+            case useHeadroom
             /// An automatic reset is more likely than not, before the credit expires.
             case waitForAutomaticReset
-            /// The credit expires soon and consumption is above the ideal pace.
+            /// The credit expires soon while a long window is already drawn down.
             case useBeforeExpiry
             /// Nothing suggests spending a credit yet.
             case hold
@@ -27,18 +27,23 @@ struct ResetCreditAdvisor {
 
         let action: Action
         let windowName: String?
+        /// Remaining quota of the window the advice refers to, for the one-liner.
+        let windowPercent: Int?
         let exhaustionAt: Date?
         let probability: Double?
         let expectedResetAt: Date?
         let expiresAt: Date?
         let creditTitle: String?
         /// The moment the advice points at: when to spend the credit, when the
-        /// window is expected to reach the floor, or the automatic reset to wait for.
+        /// long window runs dry, or the reset to wait for.
         let recommendedAt: Date?
     }
 
-    /// Percentage at or below which the maximising strategy refills a window.
-    static let floorPercent = 5
+    /// Remaining quota at which the maximising strategy refills a long window.
+    static let headroomPercent = 20
+
+    /// Remaining quota that makes an expiring credit worth spending.
+    static let expiryPressurePercent = 50
 
     static func recommend(
         windows: [UsageWindow],
@@ -47,7 +52,6 @@ struct ResetCreditAdvisor {
         forecast: ResetForecast?,
         now: Date,
         strategy: ResetStrategy = .bridge,
-        riskHorizon: TimeInterval = 6 * 60 * 60,
         probabilityThreshold: Double = 0.6,
         expiryWarning: TimeInterval = 48 * 60 * 60
     ) -> Recommendation? {
@@ -60,31 +64,21 @@ struct ResetCreditAdvisor {
             .min { ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture) }
         let soonestExpiry = expiring?.expiresAt
 
-        // The next automatic refill of any window; it is the moment holding stops
-        // mattering for the bridge strategy.
-        let nextRefill = windows
-            .compactMap(\.resetsAt)
-            .filter { $0 > now }
-            .min()
+        let outlooks = QuotaOutlook.outlooks(windows: windows, samples: samples, now: now)
+        let longOutlooks = outlooks.filter(\.isLongWindow)
+        let tightest = longOutlooks.min { $0.window.remainingPercent < $1.window.remainingPercent }
 
-        if strategy == .maximize {
-            return maximizeRecommendation(
-                windows: windows,
-                samples: samples,
-                now: now,
-                riskHorizon: riskHorizon,
-                expiryWarning: expiryWarning,
-                soonestExpiry: soonestExpiry,
-                expiring: expiring,
-                nextRefill: nextRefill
-            )
-        }
-
-        // 1. Quota that cannot survive until its own reset needs a credit now.
-        if let risk = exhaustionRisk(windows: windows, samples: samples, now: now, horizon: riskHorizon) {
+        // 1. A long window that cannot reach its own reset is what a credit is for.
+        if let risk = longOutlooks
+            .compactMap({ outlook -> (name: String, percent: Int, at: Date)? in
+                guard let at = outlook.coverage.exhaustionDate else { return nil }
+                return (outlook.window.name, outlook.window.remainingPercent, at)
+            })
+            .min(by: { $0.at < $1.at }) {
             return Recommendation(
                 action: .useNow,
                 windowName: risk.name,
+                windowPercent: risk.percent,
                 exhaustionAt: risk.at,
                 probability: nil,
                 expectedResetAt: nil,
@@ -95,7 +89,7 @@ struct ResetCreditAdvisor {
         }
 
         // 2. A likely automatic reset removes the reason to spend anything, as long
-        // as it is expected to arrive before the credit would expire.
+        // as it arrives before the credit would expire.
         if let forecast,
            forecast.probability >= probabilityThreshold,
            let expected = forecast.nextExpectedAt ?? forecast.lastResetAt,
@@ -103,7 +97,8 @@ struct ResetCreditAdvisor {
            soonestExpiry.map({ expected < $0 }) ?? true {
             return Recommendation(
                 action: .waitForAutomaticReset,
-                windowName: nil,
+                windowName: tightest?.window.name,
+                windowPercent: tightest?.window.remainingPercent,
                 exhaustionAt: nil,
                 probability: forecast.probability,
                 expectedResetAt: expected,
@@ -113,14 +108,34 @@ struct ResetCreditAdvisor {
             )
         }
 
-        // 3. An expiring credit is worth spending once quota is already over pace,
-        // because holding it past that point would waste it.
+        // 3. Maximising: a long window that is already low is worth refilling even
+        // when it would technically last, because the point is to keep working.
+        if strategy == .maximize,
+           let tightest,
+           tightest.window.remainingPercent <= headroomPercent {
+            return Recommendation(
+                action: .useHeadroom,
+                windowName: tightest.window.name,
+                windowPercent: tightest.window.remainingPercent,
+                exhaustionAt: nil,
+                probability: nil,
+                expectedResetAt: nil,
+                expiresAt: soonestExpiry,
+                creditTitle: expiring?.title,
+                recommendedAt: now
+            )
+        }
+
+        // 4. An expiring credit is wasted once it lapses, so spend it while a long
+        // window is already drawn down.
         if let soonestExpiry,
            soonestExpiry.timeIntervalSince(now) <= expiryWarning,
-           let burning = windows.first(where: { $0.pace(at: now) == .overPace }) {
+           let tightest,
+           tightest.window.remainingPercent <= expiryPressurePercent {
             return Recommendation(
                 action: .useBeforeExpiry,
-                windowName: burning.name,
+                windowName: tightest.window.name,
+                windowPercent: tightest.window.remainingPercent,
                 exhaustionAt: nil,
                 probability: nil,
                 expectedResetAt: nil,
@@ -132,147 +147,14 @@ struct ResetCreditAdvisor {
 
         return Recommendation(
             action: .hold,
-            windowName: nil,
+            windowName: tightest?.window.name,
+            windowPercent: tightest?.window.remainingPercent,
             exhaustionAt: nil,
             probability: nil,
-            expectedResetAt: nextRefill,
+            expectedResetAt: tightest?.window.resetsAt,
             expiresAt: soonestExpiry,
             creditTitle: expiring?.title,
-            recommendedAt: nextRefill
+            recommendedAt: tightest?.window.resetsAt
         )
-    }
-
-    /// Returns the window that will run dry within the horizon, if any.
-    private static func exhaustionRisk(
-        windows: [UsageWindow],
-        samples: [QuotaHistorySample],
-        now: Date,
-        horizon: TimeInterval
-    ) -> (name: String, at: Date)? {
-        let deadline = now.addingTimeInterval(horizon)
-        var best: (name: String, at: Date)?
-
-        for window in windows {
-            let windowSamples = samples.filter { $0.windowID == window.historyID }
-            guard let estimate = QuotaExhaustionEstimate.calculate(
-                samples: windowSamples,
-                now: now
-            ) else {
-                continue
-            }
-            guard estimate.exhaustedAt <= deadline else { continue }
-            // The official reset already refills the window, so a credit would be
-            // spent on capacity the account is about to receive anyway.
-            if let resetsAt = window.resetsAt, estimate.exhaustedAt >= resetsAt {
-                continue
-            }
-            if best == nil || estimate.exhaustedAt < (best?.at ?? .distantFuture) {
-                best = (window.name, estimate.exhaustedAt)
-            }
-        }
-
-        return best
-    }
-
-    /// Maximising strategy: keep burning quota instead of parking it until the
-    /// official reset. A credit is worth spending as soon as a window runs dry,
-    /// and an expiring credit should be spent while capacity remains to use it.
-    private static func maximizeRecommendation(
-        windows: [UsageWindow],
-        samples: [QuotaHistorySample],
-        now: Date,
-        riskHorizon: TimeInterval,
-        expiryWarning: TimeInterval,
-        soonestExpiry: Date?,
-        expiring: CodexRateLimitResetCredit?,
-        nextRefill: Date?
-    ) -> Recommendation {
-        // 1. A window at the floor blocks work right now; refilling it keeps the
-        //    account consuming quota that would otherwise sit unused.
-        if let floor = windows.filter({ $0.remainingPercent <= floorPercent }).min(by: { $0.remainingPercent < $1.remainingPercent }) {
-            return Recommendation(
-                action: .useAtFloor,
-                windowName: floor.name,
-                exhaustionAt: nil,
-                probability: nil,
-                expectedResetAt: nil,
-                expiresAt: soonestExpiry,
-                creditTitle: expiring?.title,
-                recommendedAt: now
-            )
-        }
-
-        // 2. Quota that cannot survive until its own reset still needs a credit.
-        if let risk = exhaustionRisk(windows: windows, samples: samples, now: now, horizon: riskHorizon) {
-            return Recommendation(
-                action: .useNow,
-                windowName: risk.name,
-                exhaustionAt: risk.at,
-                probability: nil,
-                expectedResetAt: nil,
-                expiresAt: soonestExpiry,
-                creditTitle: expiring?.title,
-                recommendedAt: now
-            )
-        }
-
-        // 3. An expiring credit is wasted once it lapses, so spend it while quota
-        //    still has room to absorb the refill.
-        if let soonestExpiry,
-           soonestExpiry.timeIntervalSince(now) <= expiryWarning,
-           let burnable = windows.first(where: { $0.remainingPercent <= 70 }) {
-            return Recommendation(
-                action: .useBeforeExpiry,
-                windowName: burnable.name,
-                exhaustionAt: nil,
-                probability: nil,
-                expectedResetAt: nil,
-                expiresAt: soonestExpiry,
-                creditTitle: expiring?.title,
-                recommendedAt: soonestExpiry
-            )
-        }
-
-        // 4. Nothing to do yet, but say when the floor is expected to arrive: that
-        //    is the moment the next credit becomes worth spending.
-        let floorProjection = projectedFloor(windows: windows, samples: samples, now: now)
-        return Recommendation(
-            action: .hold,
-            windowName: floorProjection?.name ?? nextRefillWindowName(windows: windows, now: now),
-            exhaustionAt: nil,
-            probability: nil,
-            expectedResetAt: nextRefill,
-            expiresAt: soonestExpiry,
-            creditTitle: expiring?.title,
-            recommendedAt: floorProjection?.at ?? nextRefill
-        )
-    }
-
-    /// Projects when the tightest window reaches the floor, which is when the
-    /// maximising strategy wants to refill again.
-    private static func projectedFloor(
-        windows: [UsageWindow],
-        samples: [QuotaHistorySample],
-        now: Date
-    ) -> (name: String, at: Date)? {
-        guard let tightest = windows.min(by: { $0.remainingPercent < $1.remainingPercent }) else {
-            return nil
-        }
-        let windowSamples = samples.filter { $0.windowID == tightest.historyID }
-        guard let estimate = QuotaExhaustionEstimate.calculate(
-            samples: windowSamples,
-            now: now
-        ), let at = estimate.projectedDate(reaching: floorPercent) else {
-            return nil
-        }
-        return (tightest.name, at)
-    }
-
-    /// Name of the window that refills next, used when no projection is available.
-    private static func nextRefillWindowName(windows: [UsageWindow], now: Date) -> String? {
-        windows
-            .filter { ($0.resetsAt ?? .distantPast) > now }
-            .min { ($0.resetsAt ?? .distantFuture) < ($1.resetsAt ?? .distantFuture) }?
-            .name
     }
 }

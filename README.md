@@ -303,14 +303,18 @@ has something to show.
 
 Two habits conflict when a plan refills on a schedule. **Reach the reset**
 (**Settings → General → Reset strategy**) keeps the current quota until the
-official reset refills it and spends a banked reset only when a window is
-projected to run out first. **Use it all** treats unused quota as wasted: it
-suggests refilling as soon as a window is dry, and it spends a credit that is
-about to expire while capacity still exists to consume it. The advice line with
-the banked resets follows the selected strategy and always names the moment it
-points at — the projected time a window reaches the floor, the next automatic
-reset, or the credit's deadline — so a hold says when holding stops being right.
-Nothing else changes, and the app never redeems a reset by itself.
+official reset refills it and spends a banked reset only when a weekly or monthly
+window cannot reach its own reset. **Use it all** treats unused quota as wasted:
+it also suggests refilling a long window once it drops below twenty percent.
+Short windows never trigger the advice on their own, because a five-hour window
+refills several times a day and covering it would waste the credit.
+
+Above the list of banked resets, every quota window gets its own row — remaining
+percentage plus "runs out around …", "lasts until its … reset", or "no usage
+since …" — and a single credit line follows the selected strategy. That line
+always names the window, its remaining quota, and the moment it points at, so a
+hold says when holding stops being right. Nothing changes automatically, and the
+app never redeems a reset by itself.
 
 ### Reset estimate (optional)
 

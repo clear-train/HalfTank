@@ -994,7 +994,8 @@ struct QuotaExhaustionEstimate: Equatable, Sendable {
         now: Date,
         minimumSpan: TimeInterval = 15 * 60,
         halfLife: TimeInterval = 45 * 60,
-        maximumSamples: Int = 240
+        maximumSamples: Int = 240,
+        allowingPastReset: Bool = false
     ) -> QuotaExhaustionEstimate? {
         let segment = QuotaCycleDetection.segments(samples
             .filter { !$0.isStale && $0.sampledAt <= now }
@@ -1083,14 +1084,16 @@ struct QuotaExhaustionEstimate: Equatable, Sendable {
             return nil
         }
 
-        // The official reset remains authoritative; an estimate after it has no useful meaning.
-        if let resetsAt = last.resetsAt, exhaustedAt >= resetsAt {
+        // The official reset remains authoritative for the estimate shown to the
+        // user; a projection past it only matters to callers that compare the two
+        // moments, such as the per-window outlook.
+        if !allowingPastReset, let resetsAt = last.resetsAt, exhaustedAt >= resetsAt {
             return nil
         }
 
         let earliest = max(now, projectedDate(slope: fastSlope) ?? exhaustedAt)
         var latest = max(exhaustedAt, projectedDate(slope: slowSlope) ?? exhaustedAt)
-        if let resetsAt = last.resetsAt {
+        if !allowingPastReset, let resetsAt = last.resetsAt {
             latest = min(latest, resetsAt)
         }
         guard latest >= earliest else { return nil }

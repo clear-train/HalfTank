@@ -6681,45 +6681,45 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Use it before %@: the credit expires then and quota is already above the ideal pace."
+            "value": "Use this credit before %@: it expires then and %@ is only at %@."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "建议在 %@ 前用掉：该券届时过期，而额度已在超速消耗。"
+            "value": "在 %@ 之前用掉这张券：它那时过期，而 %@ 只剩 %@。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "建議在 %@ 前用掉：該券屆時過期，而額度已在超速消耗。"
+            "value": "在 %@ 之前用掉這張券：它那時過期，而 %@ 只剩 %@。"
           }
         }
       }
     },
-    "reset_credits.advice.floor_format": {
+    "reset_credits.advice.headroom_format": {
+      "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Use a reset now: %@ has run dry, so the credit keeps the work going."
+            "value": "Refill now if you plan to keep working: %@ is at %@ and does not refill until %@."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 已经见底，现在用一张重置券就能接着用。"
+            "value": "想继续放开用就现在补一张：%@ 只剩 %@，要到 %@ 才重置。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 已經見底，現在用一張重置券就能接著用。"
+            "value": "想繼續放開用就現在補一張：%@ 只剩 %@，要到 %@ 才重置。"
           }
         }
-      },
-      "extractionState": "manual"
+      }
     },
     "reset_credits.advice.hold": {
       "extractionState": "manual",
@@ -6727,88 +6727,42 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No need to spend a credit yet: quota still lasts until its own reset."
+            "value": "No credit needed yet."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "暂时不必用券：额度仍能撑到自动重置。"
+            "value": "暂时不用券。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "暫時不必用券：額度仍能撐到自動重置。"
+            "value": "暫時不用券。"
           }
         }
       }
     },
-    "reset_credits.advice.hold_format": {
+    "reset_credits.advice.hold_window_format": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No credit needed yet: quota should last until the automatic reset at %@."
+            "value": "No credit needed yet: %@ is at %@ and should last until %@."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "暂时不用：额度应该能撑到 %@ 的自动重置。"
+            "value": "暂时不用券：%@ 还剩 %@，能撑到 %@ 重置。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "暫時不用：額度應該能撐到 %@ 的自動重置。"
-          }
-        }
-      }
-    },
-    "reset_credits.advice.hold_maximize": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not yet: burn the quota you already have before spending a credit."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "先不急：把现有额度用到见底再用券更划算。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "先不急：把現有額度用到見底再用券更划算。"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
-    "reset_credits.advice.hold_maximize_format": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No credit needed yet: %@ should reach the floor around %@."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "暂时不用：%@ 预计在 %@ 左右降到 5%。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "暫時不用：%@ 預計在 %@ 左右降到 5%。"
+            "value": "暫時不用券：%@ 還剩 %@，能撐到 %@ 重置。"
           }
         }
       }
@@ -6819,19 +6773,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Use a reset now: %@ is projected to run out at %@, before its own reset."
+            "value": "Spend a reset now: %@ is at %@ and projected to run out around %@, before its own reset."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "建议现在用掉一张券：%@ 预计 %@ 耗尽，早于自动重置。"
+            "value": "现在用一张重置券：%@ 只剩 %@，预计 %@ 用完，早于它自己的重置。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "建議現在用掉一張券：%@ 預計 %@ 耗盡，早於自動重置。"
+            "value": "現在用一張重置券：%@ 只剩 %@，預計 %@ 用完，早於它自己的重置。"
           }
         }
       }
@@ -6993,6 +6947,121 @@
           "stringUnit": {
             "state": "translated",
             "value": "暫無可用機會"
+          }
+        }
+      }
+    },
+    "reset_credits.outlook.idle_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no usage since %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自 %@ 起没有消耗"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自 %@ 起沒有消耗"
+          }
+        }
+      }
+    },
+    "reset_credits.outlook.lasts_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "lasts until its %@ reset"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "能撑到 %@ 的重置"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "能撐到 %@ 的重置"
+          }
+        }
+      }
+    },
+    "reset_credits.outlook.lasts_generic": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "lasts until its own reset"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "能撑到自己的重置"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "能撐到自己的重置"
+          }
+        }
+      }
+    },
+    "reset_credits.outlook.runs_out_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "runs out around %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预计 %@ 用完"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "預計 %@ 用完"
+          }
+        }
+      }
+    },
+    "reset_credits.outlook.unknown": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "not enough history to project"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记录不足，暂不预测"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記錄不足，暫不預測"
           }
         }
       }
@@ -9436,27 +9505,27 @@
       "extractionState": "manual"
     },
     "settings.reset_strategy.help": {
+      "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Reach the reset keeps quota for the official refill and spends a banked reset only when the current window cannot last. Use it all refills as soon as a window runs dry so work continues, and never lets a credit expire unused."
+            "value": "Reach the reset spends a banked reset only when a daily-or-longer window cannot reach its own reset. Use it all also refills a long window once it drops below 20%, so longer sessions stay unblocked."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "「撑到重置」把额度留到官方自动重置，只有当前窗口真的撑不住时才动用重置券；「尽量用完」则在窗口见底时立刻用券接着用，尽量不让券过期作废。"
+            "value": "「撑到重置」只在周/月这类长窗口撑不到自己的重置时才动用重置券；「尽量薅羊毛」则在长窗口低于 20% 时就提示补一张，适合想连续高强度使用。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "「撐到重置」把額度留到官方自動重置，只有目前視窗真的撐不住時才動用重置券；「盡量用完」則在視窗見底時立刻用券接著用，盡量不讓券過期作廢。"
+            "value": "「撐到重置」只在週/月這類長視窗撐不到自己的重置時才動用重置券；「盡量薅羊毛」則在長視窗低於 20% 時就提示補一張，適合想連續高強度使用。"
           }
         }
-      },
-      "extractionState": "manual"
+      }
     },
     "settings.reset_strategy.maximize": {
       "localizations": {

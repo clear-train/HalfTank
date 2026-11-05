@@ -348,7 +348,17 @@ struct ContentView: View {
                     samples: history.quotaSamples,
                     forecast: service.resetForecast.forecast,
                     strategy: settings.resetStrategy,
-                    appearance: settings.developerAppearance
+                    appearance: settings.developerAppearance,
+                    surge: settings.resetSurge,
+                    surgeHours: settings.resetSurgeHours,
+                    onStartSurge: {
+                        settings.resetSurge = UsageSurge(
+                            startedAt: Date(),
+                            hours: settings.resetSurgeHours
+                        )
+                    },
+                    onCancelSurge: { settings.resetSurge = nil },
+                    onSelectSurgeHours: { settings.resetSurgeHours = $0 }
                 )
             }
         case .quotaHistory:
@@ -674,6 +684,12 @@ private struct ResetCreditsSection: View {
     let forecast: ResetForecast?
     let strategy: ResetStrategy
     let appearance: MenuBarAppearance
+    /// A burst the user declared; nil when none is running.
+    let surge: UsageSurge?
+    let surgeHours: Int
+    let onStartSurge: () -> Void
+    let onCancelSurge: () -> Void
+    let onSelectSurgeHours: (Int) -> Void
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -700,11 +716,22 @@ private struct ResetCreditsSection: View {
                     .foregroundStyle(summary.hasAvailableCredits ? .primary : .secondary)
             }
 
+            if summary.hasAvailableCredits {
+                surgeRow(at: date)
+            }
+
             if let advice = advice(at: date) {
                 Label(adviceText(advice), systemImage: adviceSymbol(advice))
                     .font(.caption)
                     .foregroundStyle(adviceTint(advice))
                     .fixedSize(horizontal: false, vertical: true)
+
+                if let cost = adviceCostText(advice) {
+                    Text(cost)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             ForEach(outlooks(at: date)) { outlook in
@@ -732,7 +759,8 @@ private struct ResetCreditsSection: View {
             summary: summary,
             forecast: forecast,
             now: date,
-            strategy: strategy
+            strategy: strategy,
+            surge: surge
         )
     }
 
@@ -740,8 +768,11 @@ private struct ResetCreditsSection: View {
     private func adviceText(_ advice: ResetCreditAdvisor.Recommendation) -> String {
         switch advice.action {
         case .useNow:
+            let key = advice.blockedMinutes == nil
+                ? "reset_credits.advice.use_now_format"
+                : "reset_credits.advice.demand_format"
             return L10n.format(
-                "reset_credits.advice.use_now_format",
+                key,
                 advice.windowName ?? L10n.string("reset_credits.title"),
                 advice.windowPercent.map { "\($0)%" } ?? "-",
                 advice.exhaustionAt.map(L10n.formattedDateTime) ?? "-"
@@ -782,6 +813,62 @@ private struct ResetCreditsSection: View {
             }
             return L10n.string("reset_credits.advice.hold")
         }
+    }
+
+    @MainActor
+    private func surgeRow(at date: Date) -> some View {
+        HStack(spacing: 8) {
+            if let surge, surge.isActive(at: date) {
+                Label(
+                    L10n.format(
+                        "reset_credits.surge.active_format",
+                        surge.remainingLabel(at: date)
+                    ),
+                    systemImage: "bolt.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+
+                Spacer(minLength: 8)
+
+                Button(L10n.string("reset_credits.surge.cancel")) { onCancelSurge() }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Menu {
+                    ForEach(UsageSurge.hourOptions, id: \.self) { hours in
+                        Button(L10n.format("reset_credits.surge.hours_format", "\(hours)")) {
+                            onSelectSurgeHours(hours)
+                            onStartSurge()
+                        }
+                    }
+                } label: {
+                    Label(
+                        L10n.format("reset_credits.surge.start_format", "\(surgeHours)"),
+                        systemImage: "bolt"
+                    )
+                    .font(.caption)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    /// A credit is not extra quota: name what it discards and where the next
+    /// refill lands, so the advice can be judged instead of trusted blindly.
+    private func adviceCostText(_ advice: ResetCreditAdvisor.Recommendation) -> String? {
+        guard let wasted = advice.wastedPercent,
+              let refill = advice.creditRefillAt else { return nil }
+        return L10n.format(
+            "reset_credits.advice.cost_format",
+            "\(wasted)%",
+            L10n.formattedDateTime(refill)
+        )
     }
 
     @MainActor

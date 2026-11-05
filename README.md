@@ -316,6 +316,17 @@ always names the window, its remaining quota, and the moment it points at, so a
 hold says when holding stops being right. Nothing changes automatically, and the
 app never redeems a reset by itself.
 
+Because a credit does not add quota — it refills now and restarts the weekly
+clock — the app only suggests spending one when the account would otherwise sit
+at zero before its next refill. It learns that from your own samples: the same
+hour of the week is not equally busy, so the projection uses a per-hour profile
+once it has two weeks of history and a plain average before that. When you know
+a burst is coming, **Declare a …-hour burst** (2, 4, or 8 hours) raises the next
+few hours to three times the learned rate, and the suggestion updates
+immediately; the burst expires on its own and can be cancelled. Every suggestion
+that spends a credit also states what it costs — how much quota is discarded
+across the windows a reset refills, and where the following refill lands.
+
 ### Reset estimate (optional)
 
 Codex resets are announced by the team and tracked by the community. When

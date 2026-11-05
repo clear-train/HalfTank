@@ -1,15 +1,19 @@
 import Foundation
 
-/// Turns banked resets, per-window outlooks, and the community reset estimate
-/// into one line of advice.
+/// Turns banked resets, per-window outlooks, a learned demand curve, and the
+/// community reset estimate into one line of advice.
 ///
-/// Only windows at least a day long drive the advice. A five-hour window refills
-/// several times a day, so spending a scarce banked reset to cover it wastes the
-/// credit on capacity the account is about to receive anyway; a weekly or monthly
-/// window that cannot reach its own reset is the case a credit really fixes.
+/// Two facts shape every rule here. A banked reset does not add quota: it refills
+/// immediately and restarts the weekly clock, so the refill that would have
+/// arrived at the scheduled reset is displaced. And only windows at least a day
+/// long matter, because a five-hour window refills several times a day, so a
+/// credit spent covering it pays for capacity the account is about to receive
+/// anyway.
 ///
-/// Every recommendation names the moment it points at, because advice without a
-/// time cannot be acted on.
+/// The only question a credit really answers is whether the account would
+/// otherwise sit at zero before its next refill. Answering it needs a demand
+/// curve, which is why `ResetCreditDemand` simulates the cycle instead of
+/// assuming a constant burn rate.
 struct ResetCreditAdvisor {
     struct Recommendation: Equatable, Sendable {
         enum Action: Equatable, Sendable {
@@ -37,6 +41,12 @@ struct ResetCreditAdvisor {
         /// The moment the advice points at: when to spend the credit, when the
         /// long window runs dry, or the reset to wait for.
         let recommendedAt: Date?
+        /// Minutes the account would sit at zero without a credit.
+        let blockedMinutes: Int?
+        /// Points a reset would discard across every window it refills.
+        let wastedPercent: Int?
+        /// Where the next long-window refill lands if the credit is spent now.
+        let creditRefillAt: Date?
     }
 
     /// Remaining quota at which the maximising strategy refills a long window.
@@ -45,6 +55,9 @@ struct ResetCreditAdvisor {
     /// Remaining quota that makes an expiring credit worth spending.
     static let expiryPressurePercent = 50
 
+    /// A short block is not worth a scarce credit on its own.
+    static let minimumUsefulBlockMinutes = 30
+
     static func recommend(
         windows: [UsageWindow],
         samples: [QuotaHistorySample],
@@ -52,6 +65,7 @@ struct ResetCreditAdvisor {
         forecast: ResetForecast?,
         now: Date,
         strategy: ResetStrategy = .bridge,
+        surge: UsageSurge? = nil,
         probabilityThreshold: Double = 0.6,
         expiryWarning: TimeInterval = 48 * 60 * 60
     ) -> Recommendation? {
@@ -68,7 +82,31 @@ struct ResetCreditAdvisor {
         let longOutlooks = outlooks.filter(\.isLongWindow)
         let tightest = longOutlooks.min { $0.window.remainingPercent < $1.window.remainingPercent }
 
-        // 1. A long window that cannot reach its own reset is what a credit is for.
+        // 1. Would the account be blocked before the next refill? A learned demand
+        // curve, optionally raised by a declared burst, answers what a single rate
+        // cannot. This outranks every heuristic below because it is the actual cost
+        // a credit removes.
+        if let demand = ResetCreditDemand.evaluate(
+            windows: windows, samples: samples, surge: surge, now: now
+        ), demand.blockedMinutesWithoutCredit >= minimumUsefulBlockMinutes,
+           demand.blockedMinutesAfterCredit <= 15 {
+            return Recommendation(
+                action: .useNow,
+                windowName: demand.windowName,
+                windowPercent: demand.remainingPercent,
+                exhaustionAt: demand.emptyAt,
+                probability: nil,
+                expectedResetAt: nil,
+                expiresAt: soonestExpiry,
+                creditTitle: expiring?.title,
+                recommendedAt: now,
+                blockedMinutes: demand.blockedMinutesWithoutCredit,
+                wastedPercent: demand.wastedPercent,
+                creditRefillAt: demand.refillAfterCredit
+            )
+        }
+
+        // 2. Without enough history, fall back to the active-time outlook.
         if let risk = longOutlooks
             .compactMap({ outlook -> (name: String, percent: Int, at: Date)? in
                 guard let at = outlook.coverage.exhaustionDate else { return nil }
@@ -84,11 +122,14 @@ struct ResetCreditAdvisor {
                 expectedResetAt: nil,
                 expiresAt: soonestExpiry,
                 creditTitle: expiring?.title,
-                recommendedAt: now
+                recommendedAt: now,
+                blockedMinutes: nil,
+                wastedPercent: nil,
+                creditRefillAt: nil
             )
         }
 
-        // 2. A likely automatic reset removes the reason to spend anything, as long
+        // 3. A likely automatic reset removes the reason to spend anything, as long
         // as it arrives before the credit would expire.
         if let forecast,
            forecast.probability >= probabilityThreshold,
@@ -104,11 +145,14 @@ struct ResetCreditAdvisor {
                 expectedResetAt: expected,
                 expiresAt: soonestExpiry,
                 creditTitle: expiring?.title,
-                recommendedAt: expected
+                recommendedAt: expected,
+                blockedMinutes: nil,
+                wastedPercent: nil,
+                creditRefillAt: nil
             )
         }
 
-        // 3. Maximising: a long window that is already low is worth refilling even
+        // 4. Maximising: a long window that is already low is worth refilling even
         // when it would technically last, because the point is to keep working.
         if strategy == .maximize,
            let tightest,
@@ -122,11 +166,14 @@ struct ResetCreditAdvisor {
                 expectedResetAt: nil,
                 expiresAt: soonestExpiry,
                 creditTitle: expiring?.title,
-                recommendedAt: now
+                recommendedAt: now,
+                blockedMinutes: nil,
+                wastedPercent: nil,
+                creditRefillAt: nil
             )
         }
 
-        // 4. An expiring credit is wasted once it lapses, so spend it while a long
+        // 5. An expiring credit is wasted once it lapses, so spend it while a long
         // window is already drawn down.
         if let soonestExpiry,
            soonestExpiry.timeIntervalSince(now) <= expiryWarning,
@@ -141,7 +188,10 @@ struct ResetCreditAdvisor {
                 expectedResetAt: nil,
                 expiresAt: soonestExpiry,
                 creditTitle: expiring?.title,
-                recommendedAt: soonestExpiry
+                recommendedAt: soonestExpiry,
+                blockedMinutes: nil,
+                wastedPercent: nil,
+                creditRefillAt: nil
             )
         }
 
@@ -154,7 +204,10 @@ struct ResetCreditAdvisor {
             expectedResetAt: tightest?.window.resetsAt,
             expiresAt: soonestExpiry,
             creditTitle: expiring?.title,
-            recommendedAt: tightest?.window.resetsAt
+            recommendedAt: tightest?.window.resetsAt,
+            blockedMinutes: nil,
+            wastedPercent: nil,
+            creditRefillAt: nil
         )
     }
 }

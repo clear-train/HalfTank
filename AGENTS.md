@@ -203,6 +203,14 @@ has changed.
   It reads the estimate with `allowingPastReset: true`; the displayed history
   estimate keeps suppressing projections at or after the official reset, while
   the outlook needs the unclamped moment to compare the two.
+- `Core/UsageDemandProfile.swift` learns how fast quota burns per hour of the
+  week, and simulates what a banked reset would change. Quota is recorded in whole
+  points, so a one-point drop is attributed to the gap since the previous change,
+  not to the gap between samples — otherwise a slow drain looks six times faster
+  at a ten-minute sampling interval. The profile stays flat until two weeks of
+  history exist, and the burst multiplier (three, fixed) only applies inside the
+  declared window. Keep `UsageSurge.hourOptions` and the reset advice read-only:
+  the app never redeems a reset.
 - `Core/ResetCreditAdvisor.swift` turns banked resets, the per-window outlooks,
   and the community reset estimate into the one-line voucher suggestion shown
   with the banked resets. Only long windows drive it; a credit spent to cover a
@@ -213,6 +221,11 @@ has changed.
   spend a credit expiring inside the warning window while a long window is at or
   below fifty percent, otherwise hold. `bridge` therefore only reacts to a real
   shortfall, while `maximize` also protects headroom.
+  When history is thick enough, `ResetCreditDemand` simulates the cycle instead:
+  a banked reset does not add quota, it refills now and restarts the weekly clock,
+  so a credit is only worth it when the account would otherwise be blocked before
+  its next refill. That check outranks the heuristics above; if it never fires, the
+  rules fall through unchanged.
   Every recommendation carries `windowName`, `windowPercent`, and
   `recommendedAt`, so the one-liner names the window, its remaining quota, and
   the moment it points at instead of saying "not yet". Keep the thresholds as

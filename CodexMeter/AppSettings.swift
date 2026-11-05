@@ -239,6 +239,23 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(resetStrategy.rawValue, forKey: Keys.resetStrategy) }
     }
 
+    /// A burst of work the user declared, so the reset advice can tell whether
+    /// the account would otherwise be blocked before its next refill.
+    @Published var resetSurge: UsageSurge? {
+        didSet {
+            if let resetSurge {
+                defaults.set(resetSurge.startedAt.timeIntervalSince1970, forKey: Keys.resetSurgeStartedAt)
+            } else {
+                defaults.removeObject(forKey: Keys.resetSurgeStartedAt)
+            }
+        }
+    }
+
+    /// Length picked for the next burst, remembered between launches.
+    @Published var resetSurgeHours: Int {
+        didSet { defaults.set(resetSurgeHours, forKey: Keys.resetSurgeHours) }
+    }
+
     /// Money that counts as a full DeepSeek ring. Zero means the popover shows the
     /// balance as money and the menu bar shows no percentage.
     @Published var deepSeekBudget: Double {
@@ -388,6 +405,8 @@ final class AppSettings: ObservableObject {
         static let openCodeGoChannel = "usage.openCodeGo.channel"
         static let resetForecastEnabled = "network.resetForecast.enabled"
         static let resetStrategy = "usage.resetStrategy"
+        static let resetSurgeStartedAt = "usage.resetSurge.startedAt"
+        static let resetSurgeHours = "usage.resetSurge.hours"
         static let deepSeekBudget = "usage.deepseek.budget"
         static let notificationsEnabled = "notificationsEnabled"
         static let notificationThreshold = "notificationThreshold"
@@ -480,6 +499,21 @@ final class AppSettings: ObservableObject {
         resetForecastEnabled = defaults.bool(forKey: Keys.resetForecastEnabled)
         resetStrategy = defaults.string(forKey: Keys.resetStrategy)
             .flatMap(ResetStrategy.init(rawValue:)) ?? .bridge
+        let storedSurgeHours = defaults.integer(forKey: Keys.resetSurgeHours)
+        let surgeHours = UsageSurge.hourOptions.contains(storedSurgeHours)
+            ? storedSurgeHours
+            : UsageSurge.defaultHours
+        resetSurgeHours = surgeHours
+        let surgeStart = defaults.double(forKey: Keys.resetSurgeStartedAt)
+        if surgeStart > 0 {
+            let restored = UsageSurge(
+                startedAt: Date(timeIntervalSince1970: surgeStart),
+                hours: surgeHours
+            )
+            resetSurge = restored.isActive(at: Date()) ? restored : nil
+        } else {
+            resetSurge = nil
+        }
         deepSeekBudget = defaults.double(forKey: Keys.deepSeekBudget)
         notificationsEnabled = defaults.bool(forKey: Keys.notificationsEnabled)
         let storedThreshold = defaults.integer(forKey: Keys.notificationThreshold)

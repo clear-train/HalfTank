@@ -240,6 +240,44 @@ final class ResetCreditAdvisorTests: XCTestCase {
         XCTAssertEqual(recommendation?.windowName, weekly.name)
     }
 
+    // MARK: - Demand
+
+    func testDeclaredBurstTurnsAHoldIntoASpentCredit() {
+        // Eight points left, reset in thirty-six hours, and a learned rate of a
+        // fifth of a point per hour: the week survives on its own, but three-fold
+        // work for eight hours runs it dry around twenty-four hours in.
+        let target = window(
+            remaining: 8,
+            resetsAt: now.addingTimeInterval(36 * 3600),
+            durationMins: week,
+            id: "weekly"
+        )
+        let samples = drainingSamples(for: target, from: 17, per: 1, stepMinutes: 300, count: 10)
+        let credits = summary(expiresAt: now.addingTimeInterval(20 * 24 * 3600))
+
+        let calm = ResetCreditAdvisor.recommend(
+            windows: [target],
+            samples: samples,
+            summary: credits,
+            forecast: nil,
+            now: now
+        )
+        let bursting = ResetCreditAdvisor.recommend(
+            windows: [target],
+            samples: samples,
+            summary: credits,
+            forecast: nil,
+            now: now,
+            surge: UsageSurge(startedAt: now, hours: 8)
+        )
+
+        XCTAssertEqual(calm?.action, .hold)
+        XCTAssertEqual(bursting?.action, .useNow)
+        XCTAssertGreaterThan(bursting?.blockedMinutes ?? 0, 60)
+        XCTAssertEqual(bursting?.wastedPercent, 92)
+        XCTAssertEqual(bursting?.creditRefillAt, now.addingTimeInterval(7 * 24 * 3600))
+    }
+
     // MARK: - Fixtures
 
     private func window(

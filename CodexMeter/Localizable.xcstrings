@@ -6675,6 +6675,52 @@
         }
       }
     },
+    "reset_credits.advice.cost_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Costs about %@ of quota in total; the next refill moves to %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代价：约作废 %@ 额度，下一次补充会挪到 %@。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代價：約作廢 %@ 額度，下一次補充會挪到 %@。"
+          }
+        }
+      }
+    },
+    "reset_credits.advice.demand_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spend a reset now: %@ is at %@ and would run out around %@, before its own reset."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "现在用一张重置券：%@ 只剩 %@，按当前节奏大约 %@ 就会用完，撑不到它自己的重置。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在用一張重置券：%@ 只剩 %@，按目前節奏大約 %@ 就會用完，撐不到它自己的重置。"
+          }
+        }
+      }
+    },
     "reset_credits.advice.expiry_format": {
       "extractionState": "manual",
       "localizations": {
@@ -7062,6 +7108,98 @@
           "stringUnit": {
             "state": "translated",
             "value": "記錄不足，暫不預測"
+          }
+        }
+      }
+    },
+    "reset_credits.surge.active_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Burst declared, %@ left"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "赶工中，还剩 %@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "趕工中，還剩 %@"
+          }
+        }
+      }
+    },
+    "reset_credits.surge.cancel": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消"
+          }
+        }
+      }
+    },
+    "reset_credits.surge.hours_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hours"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 小时"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 小時"
+          }
+        }
+      }
+    },
+    "reset_credits.surge.start_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Declare a %@-hour burst"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接下来 %@ 小时要赶工"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接下來 %@ 小時要趕工"
           }
         }
       }

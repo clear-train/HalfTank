@@ -6445,6 +6445,29 @@
         }
       }
     },
+    "reset_credits.advice.hold_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No credit needed yet: quota should last until the automatic reset at %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时不用：额度应该能撑到 %@ 的自动重置。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暫時不用：額度應該能撐到 %@ 的自動重置。"
+          }
+        }
+      }
+    },
     "reset_credits.advice.hold_maximize": {
       "localizations": {
         "en": {
@@ -6467,6 +6490,29 @@
         }
       },
       "extractionState": "manual"
+    },
+    "reset_credits.advice.hold_maximize_format": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No credit needed yet: %@ should reach the floor around %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时不用：%@ 预计在 %@ 左右降到 5%。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暫時不用：%@ 預計在 %@ 左右降到 5%。"
+          }
+        }
+      }
     },
     "reset_credits.advice.use_now_format": {
       "extractionState": "manual",

@@ -974,6 +974,9 @@ struct QuotaExhaustionEstimate: Equatable, Sendable {
     let latestExhaustedAt: Date
     /// Share of the observed span that actually spent quota, `0...1`.
     let activeFraction: Double
+    /// Remaining percentage when the estimate was fitted, so a higher floor can
+    /// be projected by scaling the time to zero.
+    let remainingPercent: Int
 
     /// Estimates when the window reaches zero from the current consumption rate.
     ///
@@ -1097,8 +1100,22 @@ struct QuotaExhaustionEstimate: Equatable, Sendable {
             calculatedAt: now,
             earliestExhaustedAt: earliest,
             latestExhaustedAt: latest,
-            activeFraction: activeFraction
+            activeFraction: activeFraction,
+            remainingPercent: last.remainingPercent
         )
+    }
+
+    /// Projects when the window would fall to `target` percent.
+    ///
+    /// The fitted rate holds in percentage points, so the moment a higher floor is
+    /// reached scales with the share of quota that still has to burn.
+    func projectedDate(reaching target: Int) -> Date? {
+        let floor = min(max(target, 0), remainingPercent)
+        guard floor < remainingPercent else { return nil }
+        let span = exhaustedAt.timeIntervalSince(calculatedAt)
+        guard span > 0 else { return nil }
+        let share = Double(remainingPercent - floor) / Double(remainingPercent)
+        return calculatedAt.addingTimeInterval(span * share)
     }
 
     private struct ConsumptionPoint {

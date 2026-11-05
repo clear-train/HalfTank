@@ -7,6 +7,9 @@ import Foundation
 /// spend a credit when the window cannot wait for its own reset, hold it when a
 /// community-predicted reset is likely to arrive first, and spend it soon when it
 /// would otherwise expire while quota is already burning fast.
+///
+/// Every recommendation carries the moment it points at, because "hold" is only
+/// useful when the user can see when holding stops being the right answer.
 struct ResetCreditAdvisor {
     struct Recommendation: Equatable, Sendable {
         enum Action: Equatable, Sendable {
@@ -29,7 +32,13 @@ struct ResetCreditAdvisor {
         let expectedResetAt: Date?
         let expiresAt: Date?
         let creditTitle: String?
+        /// The moment the advice points at: when to spend the credit, when the
+        /// window is expected to reach the floor, or the automatic reset to wait for.
+        let recommendedAt: Date?
     }
+
+    /// Percentage at or below which the maximising strategy refills a window.
+    static let floorPercent = 5
 
     static func recommend(
         windows: [UsageWindow],
@@ -51,6 +60,13 @@ struct ResetCreditAdvisor {
             .min { ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture) }
         let soonestExpiry = expiring?.expiresAt
 
+        // The next automatic refill of any window; it is the moment holding stops
+        // mattering for the bridge strategy.
+        let nextRefill = windows
+            .compactMap(\.resetsAt)
+            .filter { $0 > now }
+            .min()
+
         if strategy == .maximize {
             return maximizeRecommendation(
                 windows: windows,
@@ -59,7 +75,8 @@ struct ResetCreditAdvisor {
                 riskHorizon: riskHorizon,
                 expiryWarning: expiryWarning,
                 soonestExpiry: soonestExpiry,
-                expiring: expiring
+                expiring: expiring,
+                nextRefill: nextRefill
             )
         }
 
@@ -72,7 +89,8 @@ struct ResetCreditAdvisor {
                 probability: nil,
                 expectedResetAt: nil,
                 expiresAt: soonestExpiry,
-                creditTitle: expiring?.title
+                creditTitle: expiring?.title,
+                recommendedAt: now
             )
         }
 
@@ -90,7 +108,8 @@ struct ResetCreditAdvisor {
                 probability: forecast.probability,
                 expectedResetAt: expected,
                 expiresAt: soonestExpiry,
-                creditTitle: expiring?.title
+                creditTitle: expiring?.title,
+                recommendedAt: expected
             )
         }
 
@@ -106,7 +125,8 @@ struct ResetCreditAdvisor {
                 probability: nil,
                 expectedResetAt: nil,
                 expiresAt: soonestExpiry,
-                creditTitle: expiring?.title
+                creditTitle: expiring?.title,
+                recommendedAt: soonestExpiry
             )
         }
 
@@ -115,9 +135,10 @@ struct ResetCreditAdvisor {
             windowName: nil,
             exhaustionAt: nil,
             probability: nil,
-            expectedResetAt: nil,
+            expectedResetAt: nextRefill,
             expiresAt: soonestExpiry,
-            creditTitle: expiring?.title
+            creditTitle: expiring?.title,
+            recommendedAt: nextRefill
         )
     }
 
@@ -163,11 +184,12 @@ struct ResetCreditAdvisor {
         riskHorizon: TimeInterval,
         expiryWarning: TimeInterval,
         soonestExpiry: Date?,
-        expiring: CodexRateLimitResetCredit?
+        expiring: CodexRateLimitResetCredit?,
+        nextRefill: Date?
     ) -> Recommendation {
         // 1. A window at the floor blocks work right now; refilling it keeps the
         //    account consuming quota that would otherwise sit unused.
-        if let floor = windows.filter({ $0.remainingPercent <= 5 }).min(by: { $0.remainingPercent < $1.remainingPercent }) {
+        if let floor = windows.filter({ $0.remainingPercent <= floorPercent }).min(by: { $0.remainingPercent < $1.remainingPercent }) {
             return Recommendation(
                 action: .useAtFloor,
                 windowName: floor.name,
@@ -175,7 +197,8 @@ struct ResetCreditAdvisor {
                 probability: nil,
                 expectedResetAt: nil,
                 expiresAt: soonestExpiry,
-                creditTitle: expiring?.title
+                creditTitle: expiring?.title,
+                recommendedAt: now
             )
         }
 
@@ -188,7 +211,8 @@ struct ResetCreditAdvisor {
                 probability: nil,
                 expectedResetAt: nil,
                 expiresAt: soonestExpiry,
-                creditTitle: expiring?.title
+                creditTitle: expiring?.title,
+                recommendedAt: now
             )
         }
 
@@ -204,18 +228,51 @@ struct ResetCreditAdvisor {
                 probability: nil,
                 expectedResetAt: nil,
                 expiresAt: soonestExpiry,
-                creditTitle: expiring?.title
+                creditTitle: expiring?.title,
+                recommendedAt: soonestExpiry
             )
         }
 
+        // 4. Nothing to do yet, but say when the floor is expected to arrive: that
+        //    is the moment the next credit becomes worth spending.
+        let floorProjection = projectedFloor(windows: windows, samples: samples, now: now)
         return Recommendation(
             action: .hold,
-            windowName: nil,
+            windowName: floorProjection?.name ?? nextRefillWindowName(windows: windows, now: now),
             exhaustionAt: nil,
             probability: nil,
-            expectedResetAt: nil,
+            expectedResetAt: nextRefill,
             expiresAt: soonestExpiry,
-            creditTitle: expiring?.title
+            creditTitle: expiring?.title,
+            recommendedAt: floorProjection?.at ?? nextRefill
         )
+    }
+
+    /// Projects when the tightest window reaches the floor, which is when the
+    /// maximising strategy wants to refill again.
+    private static func projectedFloor(
+        windows: [UsageWindow],
+        samples: [QuotaHistorySample],
+        now: Date
+    ) -> (name: String, at: Date)? {
+        guard let tightest = windows.min(by: { $0.remainingPercent < $1.remainingPercent }) else {
+            return nil
+        }
+        let windowSamples = samples.filter { $0.windowID == tightest.historyID }
+        guard let estimate = QuotaExhaustionEstimate.calculate(
+            samples: windowSamples,
+            now: now
+        ), let at = estimate.projectedDate(reaching: floorPercent) else {
+            return nil
+        }
+        return (tightest.name, at)
+    }
+
+    /// Name of the window that refills next, used when no projection is available.
+    private static func nextRefillWindowName(windows: [UsageWindow], now: Date) -> String? {
+        windows
+            .filter { ($0.resetsAt ?? .distantPast) > now }
+            .min { ($0.resetsAt ?? .distantFuture) < ($1.resetsAt ?? .distantFuture) }?
+            .name
     }
 }

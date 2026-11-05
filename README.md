@@ -113,7 +113,9 @@ unchanged; only the app name and the new sections differ.
 - Estimates when a window will run dry once enough recent samples exist. The
   projection is paced by active usage time and median-based so one burst cannot
   define the trend, and it reports a range with a "follows active usage time"
-  hint when the account has been idle for much of the sampled span.
+  hint when the account has been idle for much of the sampled span. The same fit
+  projects when a window would reach a higher floor, which is the moment the
+  reset advice tells you to spend a banked reset.
 - Refreshes quota on launch, every 10 seconds while the menu is open, every
   60 seconds in the background, after a Codex rate-limit update, and on manual
   request. Account checks and Token Activity polling stay at
@@ -274,8 +276,10 @@ official reset refills it and spends a banked reset only when a window is
 projected to run out first. **Use it all** treats unused quota as wasted: it
 suggests refilling as soon as a window is dry, and it spends a credit that is
 about to expire while capacity still exists to consume it. The advice line with
-the banked resets follows the selected strategy; nothing else changes, and the
-app never redeems a reset by itself.
+the banked resets follows the selected strategy and always names the moment it
+points at — the projected time a window reaches the floor, the next automatic
+reset, or the credit's deadline — so a hold says when holding stops being right.
+Nothing else changes, and the app never redeems a reset by itself.
 
 ### Reset estimate (optional)
 

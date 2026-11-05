@@ -177,6 +177,9 @@ has changed.
   window has five percent or less left (`useAtFloor`), then the same projected
   exhaustion rule, then spend a credit that expires within the warning window
   while some block still has at least thirty percent of its quota to burn.
+  Every recommendation carries `recommendedAt`: the moment to act, the projected
+  time the tightest window reaches `floorPercent` (5), or the next automatic
+  refill, so the one-liner always names a time instead of saying "not yet".
   Keep the thresholds as default arguments (6 hours of risk, 60% probability, a
   48-hour expiry warning), keep the advice read-only so it never spends a reset,
   and return nothing when no usable credit exists.
@@ -345,6 +348,9 @@ Codex App Server.
   pairwise work to the newest 240 samples of a cycle. Present the median as the
   headline and add the fast/slow bounds once they differ by five minutes or more;
   when the active share is low, say that the estimate follows active usage time.
+  Keep `projectedDate(reaching:)` on the estimate: it scales the fitted span by
+  the share of quota still above the requested floor, which is how the reset
+  advice gets a concrete moment instead of guessing one from the reset date.
 - Partition quota samples, token buckets, summaries, history views, developer
   fixtures, and CSV exports by a local account key. For ChatGPT accounts, derive
   that key from normalized account type and email using SHA-256 plus a random

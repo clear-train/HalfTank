@@ -220,6 +220,53 @@ final class ResetCreditAdvisorTests: XCTestCase {
         XCTAssertEqual(recommendation?.action, .useBeforeExpiry)
     }
 
+    // MARK: - Recommended moment
+
+    func testBridgeHoldPointsAtTheNextAutomaticReset() {
+        // Ten minutes before the official refill, so waiting is right; the wait is
+        // only actionable with the moment it ends.
+        let target = window(remaining: 50, resetsAt: now.addingTimeInterval(10 * 60))
+
+        let recommendation = ResetCreditAdvisor.recommend(
+            windows: [target],
+            samples: drainingSamples(for: target, from: 60, per: 5, stepMinutes: 5, count: 5),
+            summary: summary(expiresAt: now.addingTimeInterval(30 * 24 * 3600)),
+            forecast: nil,
+            now: now
+        )
+
+        XCTAssertEqual(recommendation?.action, .hold)
+        XCTAssertEqual(recommendation?.recommendedAt, target.resetsAt)
+    }
+
+    func testMaximizeHoldProjectsWhenTheFloorArrives() throws {
+        // One point per hour leaves the tightest window nine points above the floor,
+        // so the next credit becomes worth spending about 86 hours from now.
+        let target = window(
+            remaining: 91,
+            resetsAt: now.addingTimeInterval(120 * 3600),
+            durationMins: 7 * 24 * 60
+        )
+
+        let recommendation = ResetCreditAdvisor.recommend(
+            windows: [target],
+            samples: drainingSamples(for: target, from: 100, per: 1, stepMinutes: 60, count: 10),
+            summary: summary(expiresAt: now.addingTimeInterval(20 * 24 * 3600)),
+            forecast: nil,
+            now: now,
+            strategy: .maximize
+        )
+
+        XCTAssertEqual(recommendation?.action, .hold)
+        XCTAssertEqual(recommendation?.windowName, target.name)
+        let recommendedAt = try XCTUnwrap(recommendation?.recommendedAt)
+        XCTAssertEqual(
+            recommendedAt.timeIntervalSince(now) / 3600,
+            86,
+            accuracy: 3
+        )
+    }
+
     // MARK: - Fixtures
 
     private func window(

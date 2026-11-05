@@ -724,6 +724,18 @@ private struct ResetCreditsSection: View {
                 advice.expiresAt.map(L10n.formattedDateTime) ?? "-"
             )
         case .hold:
+            // A hold only helps when it says when holding stops being right, so the
+            // sentence carries the projected floor or the next automatic refill.
+            if let at = advice.recommendedAt.map(L10n.formattedDateTime) {
+                // A projected floor reads differently from a plain automatic refill:
+                // only the first one predicts quota reaching its low mark.
+                if strategy == .maximize,
+                   let window = advice.windowName,
+                   advice.recommendedAt != advice.expectedResetAt {
+                    return L10n.format("reset_credits.advice.hold_maximize_format", window, at)
+                }
+                return L10n.format("reset_credits.advice.hold_format", at)
+            }
             return L10n.string(
                 strategy == .maximize
                     ? "reset_credits.advice.hold_maximize"

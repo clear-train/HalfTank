@@ -148,6 +148,9 @@ extension UsageProvider {
         case .codex: "Codex"
         case .openCodeGo: "OpenCode Go"
         case .deepSeek: "DeepSeek"
+        case .openRouter: "OpenRouter"
+        case .moonshot: "Moonshot"
+        case .siliconFlow: "SiliconFlow"
         }
     }
 }
@@ -256,10 +259,30 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(resetSurgeHours, forKey: Keys.resetSurgeHours) }
     }
 
-    /// Money that counts as a full DeepSeek ring. Zero means the popover shows the
-    /// balance as money and the menu bar shows no percentage.
-    @Published var deepSeekBudget: Double {
-        didSet { defaults.set(deepSeekBudget, forKey: Keys.deepSeekBudget) }
+    /// Money that counts as a full ring, per balance provider. A missing entry
+    /// means "no budget": the popover shows money and the menu bar shows no
+    /// percentage.
+    @Published var balanceBudgets: [String: Double] {
+        didSet {
+            if let data = try? JSONEncoder().encode(balanceBudgets) {
+                defaults.set(data, forKey: Keys.balanceBudgets)
+            }
+        }
+    }
+
+    func budget(for source: BalanceSource) -> Double {
+        balanceBudgets[source.budgetKey] ?? 0
+    }
+
+    func setBudget(_ value: Double, for source: BalanceSource) {
+        var updated = balanceBudgets
+        let clamped = max(0, value)
+        if clamped > 0 {
+            updated[source.budgetKey] = clamped
+        } else {
+            updated.removeValue(forKey: source.budgetKey)
+        }
+        balanceBudgets = updated
     }
 
     @Published var resetForecastEnabled: Bool {
@@ -407,7 +430,9 @@ final class AppSettings: ObservableObject {
         static let resetStrategy = "usage.resetStrategy"
         static let resetSurgeStartedAt = "usage.resetSurge.startedAt"
         static let resetSurgeHours = "usage.resetSurge.hours"
-        static let deepSeekBudget = "usage.deepseek.budget"
+        static let balanceBudgets = "usage.balance.budgets"
+        /// Pre-2.1 single-provider key, migrated into `balanceBudgets`.
+        static let legacyDeepSeekBudget = "usage.deepseek.budget"
         static let notificationsEnabled = "notificationsEnabled"
         static let notificationThreshold = "notificationThreshold"
         static let barkEnabled = "push.barkEnabled"
@@ -514,7 +539,13 @@ final class AppSettings: ObservableObject {
         } else {
             resetSurge = nil
         }
-        deepSeekBudget = defaults.double(forKey: Keys.deepSeekBudget)
+        if let data = defaults.data(forKey: Keys.balanceBudgets),
+           let decoded = try? JSONDecoder().decode([String: Double].self, from: data) {
+            balanceBudgets = decoded
+        } else {
+            let legacy = defaults.double(forKey: Keys.legacyDeepSeekBudget)
+            balanceBudgets = legacy > 0 ? [BalanceSource.deepSeek.budgetKey: legacy] : [:]
+        }
         notificationsEnabled = defaults.bool(forKey: Keys.notificationsEnabled)
         let storedThreshold = defaults.integer(forKey: Keys.notificationThreshold)
         notificationThreshold = storedThreshold == 0 ? 20 : storedThreshold

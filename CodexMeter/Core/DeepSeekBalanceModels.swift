@@ -29,29 +29,6 @@ nonisolated enum DeepSeekBalanceError: Equatable, Error {
     case invalidPayload
 }
 
-/// Formats money the same way in the popover, the tabs and the menu bar.
-nonisolated enum DeepSeekBalanceFormat {
-    static func amount(_ value: Decimal, currency: String, locale: Locale = .current) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.locale = locale
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        formatter.usesGroupingSeparator = true
-        let number = NSDecimalNumber(decimal: value)
-        let text = formatter.string(from: number) ?? number.stringValue
-        return "\(symbol(for: currency))\(text)"
-    }
-
-    static func symbol(for currency: String) -> String {
-        switch currency.uppercased() {
-        case "CNY": return "¥"
-        case "USD": return "$"
-        default: return "\(currency) "
-        }
-    }
-}
-
 nonisolated enum DeepSeekBalanceParser {
     /// Parses the documented payload. A body without a usable balance line is
     /// malformed rather than "zero": reporting zero would claim an account is

@@ -114,18 +114,22 @@ has changed.
   and pace hints but is flagged `isDurationDerived` so `historyID` stays the
   provider-owned identifier instead of a duration bucket that would change with
   every 28- to 31-day month.
-- `Core/DeepSeekBalanceModels.swift`, `Core/DeepSeekClient.swift`, and
-  `Core/DeepSeekCredentialStore.swift` implement the DeepSeek balance source. The
-  platform reports prepaid money instead of rolling windows, so
-  `DeepSeekBalanceWindow` produces a `UsageWindow` only when the user sets a
-  budget; without one the provider stays money-only and the menu bar draws the
-  amount as text (`showsProgress == false`) rather than an empty ring. The key is
-  resolved from `DEEPSEEK_API_KEY` first and the login keychain second, is never
-  written to preferences, and no request is attempted without one. Credential
-  access is injected as closures, not a protocol, because the app target builds
-  with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and a protocol would inherit
-  that isolation. A rejected key must surface as an authorization error, not a
-  silent empty balance.
+- The prepaid sources (DeepSeek, OpenRouter, Moonshot, SiliconFlow) share one
+  layer: `Core/BalanceSource.swift` is the descriptor (endpoint, environment
+  variable, keychain suffix, fallback currency), `Core/BalanceModels.swift`
+  parses each payload into a `BalanceSnapshot` and turns it into a `UsageWindow`
+  only when the user sets a budget, `Core/BalanceClient.swift` performs the single
+  authenticated `GET`, and `Core/BalanceKeyStore.swift` resolves the key
+  (environment first, login keychain second). `BalanceUsageService.swift` is the
+  generic `UsageSource` behind all four, and `Core/DeepSeekBalanceModels.swift`
+  keeps only the DeepSeek payload parser. Adding a source is one `BalanceSource`
+  case, one parser branch, and one localized display name; no view changes.
+  Without a budget the provider stays money-only and the menu bar draws the
+  amount as text (`showsProgress == false`) rather than an empty ring. Keys are
+  never written to preferences, and no request is attempted without one.
+  Credential backends are injected as closures, not a protocol, because the app
+  target builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and a protocol
+  would inherit main-actor isolation.
 - `UsageSource.swift` and `UsageCoordinator.swift` keep the UI account-neutral.
   Views observe the coordinator, which forwards to the source the popover is
   showing. Optional sources are only started when their account row exists, so
@@ -138,13 +142,14 @@ has changed.
   name, and for Codex the `CODEX_HOME` folder that holds its `auth.json`. Several
   Codex accounts coexist because each one is a separate home directory and thus
   a separate `codex app-server` child with its own credentials. The default
-  `~/.codex` account is not removable so the app always has one source, while
-  DeepSeek and OpenCode Go are optional: removing one hides its tab, stops its
-  polling, and keeps it removed across launches, and Settings lists the missing
-  ones under *Add a source…* so it can be restored without editing preferences.
-  Removing DeepSeek keeps the stored API key, so re-adding it resumes at once.
-  `StoredQuotaAccount.normalized` keeps the default Codex account first and
-  OpenCode Go last (DeepSeek sits in between), never re-adds a provider the user
+  `~/.codex` account is not removable so the app always has one source. Every
+  balance source and OpenCode Go is optional: removing one hides its tab,
+  stops its polling, and keeps it removed across launches, and Settings lists the
+  missing ones under *Add a source…* so it can be restored without editing
+  preferences. Removing a balance source keeps its stored API key, so re-adding
+  it resumes at once. `StoredQuotaAccount.normalized` keeps the default Codex
+  account first, OpenCode Go last, and the balance sources between them in
+  `BalanceSource` order; it never re-adds a provider the user
   turned off, and drops duplicate identifiers, because one identifier owns
   one live service and one history partition. A Codex home without `auth.json`
   must report a sign-in message instead of spawning a child that would exit
@@ -161,8 +166,8 @@ has changed.
   glass capsule with an animated sliding highlight while three or fewer sources
   exist, collapsing to a checkmarked menu past that so labels never truncate.
   Use native Liquid Glass on macOS 26 and a material plus hairline edge earlier.
-- `DeepSeekUsageService.swift` mirrors the same quota surface for the balance
-  source: no quota history (`supportsQuotaHistory == false`), no token activity,
+- `BalanceUsageService.swift` is the shared `UsageSource` for every prepaid
+  balance: no quota history (`supportsQuotaHistory == false`), no token activity,
   no banked resets, no reset sections, and a no-op `setHistoryViewActive`. It
   polls far less often than the quota providers because a balance moves only
   when the account is charged or spent down.
@@ -691,6 +696,13 @@ Codex App Server.
   pace".
 
 ### Candidate follow-ups
+
+- [x] Generalize the prepaid balance source so DeepSeek, OpenRouter, Moonshot,
+  and SiliconFlow share one client, key store, and money-first view: each source
+  is a descriptor plus a payload branch, keys resolve from the provider's
+  environment variable and then the login keychain, and a source becomes a ring
+  only after the user enters a budget. Later work: Together, Fireworks, and other
+  balance or subscription endpoints, plus balance history and low-balance alerts.
 
 - [x] Add the DeepSeek platform balance as a `UsageSource`: `GET /user/balance`
   with a key from `DEEPSEEK_API_KEY` or the login keychain, money-first display,

@@ -9,8 +9,8 @@ import Foundation
 @MainActor
 final class UsageCoordinator: ObservableObject {
     let openCodeGo: OpenCodeGoUsageService
-    /// Prepaid DeepSeek credit; money-only unless the user configured a budget.
-    let deepSeek: DeepSeekUsageService
+    /// Prepaid balance sources; money-only unless the user configured a budget.
+    private var balanceServices: [BalanceSource: BalanceUsageService]
     /// Opt-in community reset estimate; it refreshes only when the popover opens
     /// or the user asks for a refresh, never on an idle timer.
     let resetForecast = ResetForecastService()
@@ -42,11 +42,17 @@ final class UsageCoordinator: ObservableObject {
             history: history,
             autostart: enabledProviders.contains(.openCodeGo)
         )
-        self.deepSeek = DeepSeekUsageService(
-            settings: settings,
-            budget: Decimal(settings.deepSeekBudget),
-            autostart: enabledProviders.contains(.deepSeek)
-        )
+        var balances: [BalanceSource: BalanceUsageService] = [:]
+        for source in BalanceSource.allCases
+        where enabledProviders.contains(UsageProvider.balanceProvider(for: source)) {
+            balances[source] = BalanceUsageService(
+                source: source,
+                settings: settings,
+                budget: Decimal(settings.budget(for: source)),
+                autostart: true
+            )
+        }
+        self.balanceServices = balances
 
         var services: [String: CodexUsageService] = [:]
         for account in stored where account.provider == .codex {
@@ -61,8 +67,13 @@ final class UsageCoordinator: ObservableObject {
         settings.$resetForecastEnabled
             .sink { [weak self] enabled in self?.resetForecast.setEnabled(enabled) }
             .store(in: &observations)
-        settings.$deepSeekBudget
-            .sink { [weak self] budget in self?.deepSeek.setBudget(Decimal(budget)) }
+        settings.$balanceBudgets
+            .sink { [weak self] budgets in
+                guard let self else { return }
+                for (source, service) in self.balanceServices {
+                    service.setBudget(Decimal(budgets[source.budgetKey] ?? 0))
+                }
+            }
             .store(in: &observations)
 
         // Activate after StateObject construction completes on the main run loop.
@@ -86,7 +97,9 @@ final class UsageCoordinator: ObservableObject {
         switch account.provider {
         case .codex: return codexServices[accountID]
         case .openCodeGo: return openCodeGo
-        case .deepSeek: return deepSeek
+        default:
+            guard let source = account.provider.balanceSource else { return nil }
+            return balanceServices[source]
         }
     }
 
@@ -163,12 +176,23 @@ final class UsageCoordinator: ObservableObject {
         }
         let account: StoredQuotaAccount
         switch provider {
-        case .deepSeek:
-            account = .deepSeekAccount()
         case .openCodeGo:
             account = .openCodeGoAccount()
         case .codex:
             return nil
+        default:
+            guard let source = provider.balanceSource else { return nil }
+            // A source removed at launch has no live service, so create one on
+            // demand instead of leaving a dead tab behind.
+            let service = balanceServices[source] ?? BalanceUsageService(
+                source: source,
+                settings: settings,
+                budget: Decimal(settings.budget(for: source)),
+                autostart: false
+            )
+            balanceServices[source] = service
+            service.activate()
+            account = .balanceAccount(for: source)
         }
         var updated = accounts
         updated.append(account)
@@ -186,10 +210,12 @@ final class UsageCoordinator: ObservableObject {
         case .codex:
             codexServices[id]?.deactivate()
             codexServices.removeValue(forKey: id)
-        case .deepSeek:
-            deepSeek.deactivate()
         case .openCodeGo:
             openCodeGo.deactivate()
+        default:
+            if let source = account.provider.balanceSource {
+                balanceServices[source]?.deactivate()
+            }
         }
         forwarders[id] = nil
         accounts.removeAll { $0.id == id }
@@ -269,7 +295,31 @@ final class UsageCoordinator: ObservableObject {
     var menuBarTitle: String { activeSource.menuBarTitle }
     var accountDescription: String { activeSource.accountDescription }
     var pushNotificationService: PushNotificationService { activeSource.pushNotificationService }
-    var balanceSnapshot: DeepSeekBalanceSnapshot? { activeSource.balanceSnapshot }
+    var balanceSnapshot: BalanceSnapshot? { activeSource.balanceSnapshot }
+
+    /// The live money-only service behind an account, when it has one; the
+    /// settings pane uses it to save keys and budgets per source.
+    func balanceService(for accountID: String) -> (any BalanceSourceService)? {
+        guard let account = account(withID: accountID),
+              let source = account.provider.balanceSource else { return nil }
+        return balanceServices[source]
+    }
+
+    var activeBalanceService: (any BalanceSourceService)? {
+        balanceService(for: accountID)
+    }
+
+    func balanceAccount(for source: BalanceSource) -> StoredQuotaAccount? {
+        accounts.first { $0.provider == UsageProvider.balanceProvider(for: source) }
+    }
+
+    /// Configured money-only sources, in the fixed display order.
+    var configuredBalanceServices: [any BalanceSourceService] {
+        BalanceSource.allCases.compactMap { source in
+            guard balanceAccount(for: source) != nil else { return nil }
+            return balanceServices[source]
+        }
+    }
     var supportsQuotaHistory: Bool { activeSource.supportsQuotaHistory }
     var menuBarFallbackTitle: String? { activeSource.menuBarFallbackTitle }
 

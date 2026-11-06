@@ -1,28 +1,42 @@
 import Combine
 import Foundation
 
-/// Exposes the DeepSeek platform balance as quota state.
-///
-/// DeepSeek has no rolling quota windows: the only number the platform reports is
-/// the remaining prepaid money. The popover therefore shows money by default, and
-/// only draws a ring when the user says how much money a full ring represents.
+/// A quota source that only reports prepaid money.
 @MainActor
-final class DeepSeekUsageService: ObservableObject, UsageSource {
+protocol BalanceSourceService: UsageSource {
+    var source: BalanceSource { get }
+    var hasCredentials: Bool { get }
+    var hasEnvironmentKey: Bool { get }
+    var hasStoredKey: Bool { get }
+    func saveKey(_ value: String) throws
+    func removeKey() throws
+    func setBudget(_ budget: Decimal)
+}
+
+/// Exposes one prepaid balance as quota state.
+///
+/// These platforms have no rolling windows: the only number they report is the
+/// remaining credit. The popover therefore shows money by default, and only
+/// draws a ring when the user says how much money a full ring represents.
+@MainActor
+final class BalanceUsageService: ObservableObject, BalanceSourceService {
+    let source: BalanceSource
+
     @Published private(set) var windows: [UsageWindow] = []
-    @Published private(set) var balance: DeepSeekBalanceSnapshot?
-    @Published private(set) var planType: String? = "DeepSeek"
+    @Published private(set) var balance: BalanceSnapshot?
+    @Published private(set) var planType: String?
     @Published private(set) var isLoading = false
     @Published private(set) var isRefreshInFlight = false
     @Published private(set) var isStale = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var lastUpdated: Date?
-    @Published private(set) var credentialSource: DeepSeekCredentialSource?
+    @Published private(set) var credentialSource: BalanceCredentialSource?
 
-    /// The balance endpoint reports money only; there is no token breakdown.
+    /// A balance endpoint reports money only; there is no token breakdown.
     let tokenUsage: TokenUsageSnapshot? = nil
     let isTokenUsageUnavailable = true
     let tokenUsageErrorMessage: String? = nil
-    /// DeepSeek prepaid credit has no banked reset credits.
+    /// Prepaid credit has no banked reset credits.
     let rateLimitResetCredits: CodexRateLimitResetCreditsSummary? = nil
     let pushNotificationService: PushNotificationService
 
@@ -33,8 +47,8 @@ final class DeepSeekUsageService: ObservableObject, UsageSource {
 
     private let settings: AppSettings
     private let notificationManager: NotificationManager
-    private let credentialStore: DeepSeekCredentialStore
-    private let client = DeepSeekClient()
+    private let credentialStore: BalanceKeyStore
+    private let client: BalanceClient
     private var budget: Decimal = 0
     private var refreshTimer: Timer?
     private var isPopoverVisible = false
@@ -47,19 +61,24 @@ final class DeepSeekUsageService: ObservableObject, UsageSource {
     private static let backgroundInterval: TimeInterval = 300
 
     init(
+        source: BalanceSource,
         settings: AppSettings,
-        credentialStore: DeepSeekCredentialStore = DeepSeekCredentialStore(),
+        credentialStore: BalanceKeyStore? = nil,
         notificationManager: NotificationManager? = nil,
         pushNotificationService: PushNotificationService? = nil,
         budget: Decimal = 0,
         autostart: Bool = true
     ) {
+        self.source = source
         self.settings = settings
-        self.credentialStore = credentialStore
+        self.credentialStore = credentialStore ?? BalanceKeyStore(source: source)
+        self.client = BalanceClient(source: source)
         self.notificationManager = notificationManager ?? NotificationManager()
         self.pushNotificationService = pushNotificationService ?? PushNotificationService(settings: settings)
+        self.planType = source.displayName
         self.budget = budget
-        self.historyAccountKey = UsageProvider.deepSeek.historyAccountKey(for: nil)
+        self.historyAccountKey = UsageProvider.balanceProvider(for: source)
+            .historyAccountKey(for: nil)
 
         Task { @MainActor [weak self] in
             guard let self, autostart else { return }
@@ -68,9 +87,7 @@ final class DeepSeekUsageService: ObservableObject, UsageSource {
         }
     }
 
-    /// Protocol-facing view of `balance`; the concrete property stays internal so
-    /// the settings pane can read the fetched-at date.
-    var balanceSnapshot: DeepSeekBalanceSnapshot? { balance }
+    var balanceSnapshot: BalanceSnapshot? { balance }
 
     var hasCredentials: Bool { credentialStore.resolve() != nil }
     var hasEnvironmentKey: Bool { credentialStore.hasEnvironmentKey }
@@ -98,11 +115,13 @@ final class DeepSeekUsageService: ObservableObject, UsageSource {
     }
 
     var accountDescription: String {
-        guard hasCredentials else { return L10n.string("account.deepseek_needs_key") }
-        if let balanceText {
-            return "DeepSeek · \(balanceText)"
+        guard hasCredentials else {
+            return L10n.format("account.balance_needs_key_format", source.displayName)
         }
-        return "DeepSeek"
+        if let balanceText {
+            return "\(source.displayName) · \(balanceText)"
+        }
+        return source.displayName
     }
 
     // MARK: - Provider activation
@@ -118,7 +137,7 @@ final class DeepSeekUsageService: ObservableObject, UsageSource {
         isPopoverVisible = false
     }
 
-    /// The balance has no history partition; recording would create a one-point
+    /// A balance has no history partition; recording would create a one-point
     /// series, so ownership changes are intentionally ignored.
     func setHistoryViewActive(_ active: Bool) {}
 
@@ -165,7 +184,7 @@ final class DeepSeekUsageService: ObservableObject, UsageSource {
                 await MainActor.run {
                     guard let self else { return }
                     self.isFetching = false
-                    self.apply(snapshot, source: key.source)
+                    self.apply(snapshot, credentialSource: key.source)
                 }
             } catch {
                 await MainActor.run {
@@ -238,9 +257,9 @@ final class DeepSeekUsageService: ObservableObject, UsageSource {
 
     // MARK: - State
 
-    private func apply(_ snapshot: DeepSeekBalanceSnapshot, source: DeepSeekCredentialSource) {
+    private func apply(_ snapshot: BalanceSnapshot, credentialSource: BalanceCredentialSource) {
         balance = snapshot
-        credentialSource = source
+        self.credentialSource = credentialSource
         applyWindows()
         isLoading = false
         isRefreshInFlight = false
@@ -260,7 +279,7 @@ final class DeepSeekUsageService: ObservableObject, UsageSource {
             windows = []
             return
         }
-        let window = DeepSeekBalanceWindow.window(
+        let window = BalanceWindow.window(
             for: balance,
             budget: budget,
             name: L10n.string("balance.window.name")
@@ -270,7 +289,7 @@ final class DeepSeekUsageService: ObservableObject, UsageSource {
 
     private var balanceText: String? {
         guard let line = balance?.preferred else { return nil }
-        return DeepSeekBalanceFormat.amount(line.total, currency: line.currency)
+        return BalanceFormat.amount(line.total, currency: line.currency)
     }
 
     private func markFailure(_ error: Error) {
@@ -279,14 +298,10 @@ final class DeepSeekUsageService: ObservableObject, UsageSource {
         isRefreshInFlight = false
         isStale = balance != nil
         switch error {
-        case DeepSeekClient.ClientError.unauthorized:
-            errorMessage = L10n.string("error.deepseek.unauthorized")
-        case DeepSeekClient.ClientError.invalidPayload:
-            errorMessage = L10n.string("error.deepseek.unavailable")
-        case DeepSeekClient.ClientError.requestFailed:
-            errorMessage = L10n.string("error.deepseek.unavailable")
+        case BalanceClient.ClientError.unauthorized:
+            errorMessage = L10n.string("error.balance.unauthorized")
         default:
-            errorMessage = L10n.string("error.deepseek.unavailable")
+            errorMessage = L10n.string("error.balance.unavailable")
         }
     }
 

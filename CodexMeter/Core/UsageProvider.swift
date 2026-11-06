@@ -8,8 +8,11 @@ import Foundation
 nonisolated enum UsageProvider: String, CaseIterable, Codable, Identifiable, Sendable {
     case codex
     case openCodeGo
-    /// Prepaid platform credit, read from the DeepSeek balance endpoint.
+    /// Prepaid platform credit, read from a balance endpoint.
     case deepSeek
+    case openRouter
+    case moonshot
+    case siliconFlow
 
     var id: String { rawValue }
 
@@ -29,6 +32,12 @@ nonisolated enum UsageProvider: String, CaseIterable, Codable, Identifiable, Sen
             self = .openCodeGo
         case "deepseek":
             self = .deepSeek
+        case "openrouter":
+            self = .openRouter
+        case "moonshot":
+            self = .moonshot
+        case "siliconflow":
+            self = .siliconFlow
         default:
             throw DecodingError.dataCorruptedError(
                 in: try decoder.singleValueContainer(),
@@ -37,16 +46,41 @@ nonisolated enum UsageProvider: String, CaseIterable, Codable, Identifiable, Sen
         }
     }
 
-    /// Stable namespace that keeps local history separate per provider.
     /// Sources a user can add or remove from the account list. The default
     /// Codex login is always present, so it is not part of this list.
-    static var optionalProviders: [UsageProvider] { [.deepSeek, .openCodeGo] }
+    static var optionalProviders: [UsageProvider] {
+        BalanceSource.allCases.map(balanceProvider(for:)) + [.openCodeGo]
+    }
 
+    /// The balance descriptor behind a money-only provider, if any.
+    var balanceSource: BalanceSource? {
+        switch self {
+        case .deepSeek: return .deepSeek
+        case .openRouter: return .openRouter
+        case .moonshot: return .moonshot
+        case .siliconFlow: return .siliconFlow
+        case .codex, .openCodeGo: return nil
+        }
+    }
+
+    static func balanceProvider(for source: BalanceSource) -> UsageProvider {
+        switch source {
+        case .deepSeek: return .deepSeek
+        case .openRouter: return .openRouter
+        case .moonshot: return .moonshot
+        case .siliconFlow: return .siliconFlow
+        }
+    }
+
+    /// Stable namespace that keeps local history separate per provider.
     var historyNamespace: String {
         switch self {
         case .codex: "codex"
         case .openCodeGo: "opencode-go"
         case .deepSeek: "deepseek"
+        case .openRouter: "openrouter"
+        case .moonshot: "moonshot"
+        case .siliconFlow: "siliconflow"
         }
     }
 

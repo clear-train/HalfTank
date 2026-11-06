@@ -24,7 +24,7 @@ protocol UsageSource: ObservableObject where ObjectWillChangePublisher == Observ
     var accountDescription: String { get }
     var pushNotificationService: PushNotificationService { get }
     /// Money balance for providers that report prepaid credit instead of windows.
-    var balanceSnapshot: DeepSeekBalanceSnapshot? { get }
+    var balanceSnapshot: BalanceSnapshot? { get }
     /// Whether a time series exists to chart. A single balance point has none.
     var supportsQuotaHistory: Bool { get }
     /// Text the menu bar can draw when there is no percentage to show.
@@ -44,7 +44,7 @@ protocol UsageSource: ObservableObject where ObjectWillChangePublisher == Observ
 
 extension UsageSource {
     /// Quota providers without a money balance inherit these defaults.
-    var balanceSnapshot: DeepSeekBalanceSnapshot? { nil }
+    var balanceSnapshot: BalanceSnapshot? { nil }
     var supportsQuotaHistory: Bool { true }
     var menuBarFallbackTitle: String? { nil }
 }

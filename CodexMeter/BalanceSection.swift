@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Money-first presentation for a prepaid balance such as DeepSeek's.
+/// Money-first presentation for a prepaid balance source.
 ///
 /// A balance has no reset cycle, so the section leads with the amount and only
 /// mentions the ring when the user configured a budget for it.
-struct DeepSeekBalanceSection: View {
-    let balance: DeepSeekBalanceSnapshot
+struct BalanceSection: View {
+    let balance: BalanceSnapshot
     let budget: Double
 
     var body: some View {
@@ -23,7 +23,7 @@ struct DeepSeekBalanceSection: View {
 
             if let line = balance.preferred {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(DeepSeekBalanceFormat.amount(line.total, currency: line.currency))
+                    Text(BalanceFormat.amount(line.total, currency: line.currency))
                         .font(.title2.weight(.semibold).monospacedDigit())
 
                     Text(L10n.string("balance.remaining"))
@@ -33,8 +33,8 @@ struct DeepSeekBalanceSection: View {
 
                 Text(L10n.format(
                     "balance.breakdown_format",
-                    DeepSeekBalanceFormat.amount(line.toppedUp, currency: line.currency),
-                    DeepSeekBalanceFormat.amount(line.granted, currency: line.currency)
+                    BalanceFormat.amount(line.toppedUp, currency: line.currency),
+                    BalanceFormat.amount(line.granted, currency: line.currency)
                 ))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -42,7 +42,7 @@ struct DeepSeekBalanceSection: View {
                 if balance.lines.count > 1 {
                     Text(balance.lines
                         .filter { $0.currency != line.currency }
-                        .map { DeepSeekBalanceFormat.amount($0.total, currency: $0.currency) }
+                        .map { BalanceFormat.amount($0.total, currency: $0.currency) }
                         .joined(separator: " · "))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)

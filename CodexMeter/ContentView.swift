@@ -119,10 +119,10 @@ struct ContentView: View {
             } else if let errorMessage = service.errorMessage,
                       service.windows.isEmpty {
                 errorView(errorMessage)
-            } else if service.activeAccount.provider == .deepSeek,
+            } else if let balanceService = service.activeBalanceService,
                       service.balanceSnapshot == nil,
-                      !service.deepSeek.hasCredentials {
-                missingDeepSeekKeyView
+                      !balanceService.hasCredentials {
+                missingBalanceKeyView
             } else {
                 if let errorMessage = service.errorMessage {
                     inlineErrorView(errorMessage)
@@ -259,7 +259,7 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, minHeight: 90)
     }
 
-    private var missingDeepSeekKeyView: some View {
+    private var missingBalanceKeyView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(L10n.string("balance.needs_key_title"), systemImage: "key")
                 .foregroundStyle(.orange)
@@ -386,9 +386,9 @@ struct ContentView: View {
         TimelineView(.periodic(from: Date(), by: 60)) { context in
             VStack(spacing: 16) {
                 if let balance = service.balanceSnapshot {
-                    DeepSeekBalanceSection(
+                    BalanceSection(
                         balance: balance,
-                        budget: settings.deepSeekBudget
+                        budget: settings.budget(for: balance.source)
                     )
 
                     if !visibleQuotaWindows.isEmpty {

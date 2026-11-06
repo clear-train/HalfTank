@@ -12,8 +12,8 @@ struct AppSettingsView: View {
     @State private var selection: String? = "settings.category.general"
     @State private var showsClearConfirmation = false
     @State private var actionError: String?
-    @State private var deepSeekKeyDraft = ""
-    @State private var deepSeekKeyError: String?
+    @State private var balanceKeyDrafts: [String: String] = [:]
+    @State private var balanceKeyErrors: [String: String] = [:]
 
     private let categories = [
         ("settings.category.general", "gearshape"),
@@ -122,45 +122,10 @@ struct AppSettingsView: View {
                     }
                 }
             }
-            Section(L10n.string("settings.deepseek.section")) {
-                SecureField(L10n.string("settings.deepseek.key_placeholder"), text: $deepSeekKeyDraft)
-                HStack {
-                    Button(L10n.string("settings.deepseek.save")) {
-                        saveDeepSeekKey()
-                    }
-                    .disabled(deepSeekKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    if service.deepSeek.hasStoredKey {
-                        Button(L10n.string("settings.deepseek.remove"), role: .destructive) {
-                            removeDeepSeekKey()
-                        }
-                    }
-                }
-
-                LabeledContent(L10n.string("settings.deepseek.status")) {
-                    Text(deepSeekKeyStatus)
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack {
-                    Text(L10n.string("settings.deepseek.budget"))
-                    TextField(L10n.string("settings.deepseek.budget_placeholder"), value: Binding(
-                        get: { settings.deepSeekBudget },
-                        set: { settings.deepSeekBudget = max(0, $0) }
-                    ), format: .number)
-                    .frame(width: 110)
-                }
-
-                Text(L10n.string("settings.deepseek.help"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let deepSeekKeyError {
-                    Text(deepSeekKeyError)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
+            ForEach(BalanceSource.allCases, id: \.self) { source in
+                if let account = service.balanceAccount(for: source),
+                   let balanceService = service.balanceService(for: account.id) {
+                    balanceSettingsSection(source: source, balanceService: balanceService)
                 }
             }
             Section(L10n.string("settings.reset_strategy.section")) {
@@ -202,34 +167,92 @@ struct AppSettingsView: View {
         .formStyle(.grouped)
     }
 
-    private var deepSeekKeyStatus: String {
-        let environment = service.deepSeek.hasEnvironmentKey
-        let stored = service.deepSeek.hasStoredKey
-        switch (environment, stored) {
-        case (true, _): return L10n.string("settings.deepseek.status_environment")
-        case (false, true): return L10n.string("settings.deepseek.status_keychain")
-        default: return L10n.string("settings.deepseek.status_missing")
+    @ViewBuilder
+    private func balanceSettingsSection(
+        source: BalanceSource,
+        balanceService: any BalanceSourceService
+    ) -> some View {
+        Section(source.displayName) {
+            SecureField(L10n.string("settings.balance.key_placeholder"), text: Binding(
+                get: { balanceKeyDrafts[source.rawValue] ?? "" },
+                set: { balanceKeyDrafts[source.rawValue] = $0 }
+            ))
+            HStack {
+                Button(L10n.string("settings.balance.save")) {
+                    saveKey(for: source, service: balanceService)
+                }
+                .disabled((balanceKeyDrafts[source.rawValue] ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                if balanceService.hasStoredKey {
+                    Button(L10n.string("settings.balance.remove"), role: .destructive) {
+                        removeKey(for: source, service: balanceService)
+                    }
+                }
+
+                if let url = source.helpURL {
+                    Spacer()
+                    Button(L10n.string("settings.balance.get_key")) {
+                        NSWorkspace.shared.open(url)
+                    }
+                    .buttonStyle(.link)
+                }
+            }
+
+            LabeledContent(L10n.string("settings.balance.status")) {
+                Text(keyStatus(for: balanceService))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Text(L10n.string("settings.balance.budget"))
+                TextField(L10n.string("settings.balance.budget_placeholder"), value: Binding(
+                    get: { settings.budget(for: source) },
+                    set: { settings.setBudget($0, for: source) }
+                ), format: .number)
+                .frame(width: 110)
+            }
+
+            Text(L10n.string("settings.balance.help"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let message = balanceKeyErrors[source.rawValue] {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
-    private func saveDeepSeekKey() {
-        deepSeekKeyError = nil
+    private func keyStatus(for balanceService: any BalanceSourceService) -> String {
+        switch (balanceService.hasEnvironmentKey, balanceService.hasStoredKey) {
+        case (true, _): return L10n.string("settings.balance.status_environment")
+        case (false, true): return L10n.string("settings.balance.status_keychain")
+        default: return L10n.string("settings.balance.status_missing")
+        }
+    }
+
+    private func saveKey(for source: BalanceSource, service balanceService: any BalanceSourceService) {
+        balanceKeyErrors[source.rawValue] = nil
         do {
             // Saving a key goes straight to the keychain; the draft text is the
             // only place the full key is ever held in memory.
-            try service.deepSeek.saveKey(deepSeekKeyDraft)
-            deepSeekKeyDraft = ""
+            try balanceService.saveKey(balanceKeyDrafts[source.rawValue] ?? "")
+            balanceKeyDrafts[source.rawValue] = ""
         } catch {
-            deepSeekKeyError = L10n.string("settings.deepseek.save_failed")
+            balanceKeyErrors[source.rawValue] = L10n.string("settings.balance.save_failed")
         }
     }
 
-    private func removeDeepSeekKey() {
-        deepSeekKeyError = nil
+    private func removeKey(for source: BalanceSource, service balanceService: any BalanceSourceService) {
+        balanceKeyErrors[source.rawValue] = nil
         do {
-            try service.deepSeek.removeKey()
+            try balanceService.removeKey()
         } catch {
-            deepSeekKeyError = L10n.string("settings.deepseek.save_failed")
+            balanceKeyErrors[source.rawValue] = L10n.string("settings.balance.save_failed")
         }
     }
 

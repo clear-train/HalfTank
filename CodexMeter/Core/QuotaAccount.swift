@@ -16,6 +16,9 @@ nonisolated struct StoredQuotaAccount: Codable, Identifiable, Hashable, Sendable
     static let defaultCodexID = "codex-default"
     static let openCodeGoID = "opencode-go"
     static let deepSeekID = "deepseek"
+    static let openRouterID = "openrouter"
+    static let moonshotID = "moonshot"
+    static let siliconFlowID = "silicon-flow"
 
     static func defaultCodexHomeDirectory() -> URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -35,15 +38,34 @@ nonisolated struct StoredQuotaAccount: Codable, Identifiable, Hashable, Sendable
         StoredQuotaAccount(id: openCodeGoID, provider: .openCodeGo, displayName: "OpenCode Go", codexHomeDirectoryPath: nil)
     }
 
-    /// One implicit account: the balance belongs to the single API key the app
-    /// holds, so there is never a second DeepSeek row to add or remove.
-    static func deepSeekAccount() -> StoredQuotaAccount {
-        StoredQuotaAccount(id: deepSeekID, provider: .deepSeek, displayName: "DeepSeek", codexHomeDirectoryPath: nil)
+    /// One implicit account per balance provider: the balance belongs to the
+    /// single API key the app holds, so there is never a second row to add.
+    static func balanceAccount(for source: BalanceSource) -> StoredQuotaAccount {
+        StoredQuotaAccount(
+            id: identifier(for: source),
+            provider: UsageProvider.balanceProvider(for: source),
+            displayName: source.displayName,
+            codexHomeDirectoryPath: nil
+        )
     }
 
-    /// Accounts a fresh installation starts with. DeepSeek and OpenCode Go are
-    /// optional sources: they appear here once, and the user can remove them
-    /// again from Settings.
+    static func identifier(for source: BalanceSource) -> String {
+        switch source {
+        case .deepSeek: return deepSeekID
+        case .openRouter: return openRouterID
+        case .moonshot: return moonshotID
+        case .siliconFlow: return siliconFlowID
+        }
+    }
+
+    static func deepSeekAccount() -> StoredQuotaAccount {
+        balanceAccount(for: .deepSeek)
+    }
+
+    /// Accounts a fresh installation starts with. Every optional source is
+    /// removable from Settings, and the ones omitted here stay reachable through
+    /// *Add a source…*, so seeding DeepSeek never hides OpenRouter, Moonshot, or
+    /// SiliconFlow from a new user.
     static func seededAccounts() -> [StoredQuotaAccount] {
         [defaultAccount(), deepSeekAccount(), openCodeGoAccount()]
     }
@@ -62,14 +84,15 @@ nonisolated struct StoredQuotaAccount: Codable, Identifiable, Hashable, Sendable
             result.insert(.defaultAccount(), at: 0)
         }
         // Keep the display order stable: the default Codex login first, extra
-        // Codex logins next, DeepSeek before OpenCode Go.
-        var middle = result.filter { $0.id != defaultCodexID && $0.id != openCodeGoID }
-        if let deepSeek = middle.firstIndex(where: { $0.id == deepSeekID }) {
-            middle.append(middle.remove(at: deepSeek))
-        }
-        let tail = result.filter { $0.id == openCodeGoID }
+        // Codex logins next, then the balance sources in a fixed order, and the
+        // subscription source last.
         let head = result.filter { $0.id == defaultCodexID }
-        return head + middle + tail
+        let tail = result.filter { $0.id == openCodeGoID }
+        let middle = result.filter { $0.id != defaultCodexID && $0.id != openCodeGoID }
+        let balanceIDs = BalanceSource.allCases.map(StoredQuotaAccount.identifier(for:))
+        let codexExtras = middle.filter { !balanceIDs.contains($0.id) }
+        let balances = balanceIDs.compactMap { id in middle.first { $0.id == id } }
+        return head + codexExtras + balances + tail
     }
 
     var codexHomeDirectory: URL? {
@@ -79,13 +102,13 @@ nonisolated struct StoredQuotaAccount: Codable, Identifiable, Hashable, Sendable
 
     /// Whether the account can be deleted. The default Codex login stays so the
     /// app always has one quota source, and because it is the only account that
-    /// cannot be recreated from Settings. DeepSeek and OpenCode Go are optional
-    /// and can be added back from the same list.
+    /// cannot be recreated from Settings. Balance sources and OpenCode Go are
+    /// optional and can be added back from the same list.
     var isRemovable: Bool {
         switch provider {
         case .codex:
             return id != Self.defaultCodexID
-        case .openCodeGo, .deepSeek:
+        default:
             return true
         }
     }

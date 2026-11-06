@@ -1,34 +1,35 @@
 import Foundation
 
-/// Reads the DeepSeek platform balance with a user-supplied API key.
+/// Reads one prepaid balance with a user-supplied API key.
 ///
-/// This is the only request HalfTank makes to DeepSeek, and it happens only when
-/// a key is configured. The platform endpoint needs nothing else: no browser
+/// This is the only request HalfTank makes to a balance provider, and it happens
+/// only when a key is configured. The endpoints need nothing else: no browser
 /// session, no exported cookies.
-actor DeepSeekClient {
-    static let defaultEndpoint = URL(string: "https://api.deepseek.com/user/balance")!
-
+actor BalanceClient {
     enum ClientError: Equatable, Error {
         case unauthorized
         case invalidPayload
         case requestFailed(Int)
     }
 
+    private let source: BalanceSource
     private let endpoint: URL
     private let requestTimeout: TimeInterval
     private let session: URLSession
 
     init(
-        endpoint: URL = DeepSeekClient.defaultEndpoint,
+        source: BalanceSource,
+        endpoint: URL? = nil,
         requestTimeout: TimeInterval = 20,
         session: URLSession = .shared
     ) {
-        self.endpoint = endpoint
+        self.source = source
+        self.endpoint = endpoint ?? source.endpoint
         self.requestTimeout = requestTimeout
         self.session = session
     }
 
-    func fetch(apiKey: String, now: Date = Date()) async throws -> DeepSeekBalanceSnapshot {
+    func fetch(apiKey: String, now: Date = Date()) async throws -> BalanceSnapshot {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
         request.timeoutInterval = requestTimeout
@@ -43,13 +44,13 @@ actor DeepSeekClient {
         switch http.statusCode {
         case 200:
             do {
-                return try DeepSeekBalanceParser.parse(data, fetchedAt: now)
+                return try BalanceParser.parse(data, source: source, fetchedAt: now)
             } catch {
                 throw ClientError.invalidPayload
             }
         case 401, 403:
-            // A rejected key comes back as plain text, so the status code is the
-            // only signal worth trusting.
+            // A rejected key usually comes back as text or a provider-specific
+            // error body, so the status code is the only signal worth trusting.
             throw ClientError.unauthorized
         default:
             throw ClientError.requestFailed(http.statusCode)
